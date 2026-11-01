@@ -38,7 +38,7 @@ describe("public OpenAPI specification", () => {
       openApiSpec.paths["/api/public/tts"].post.requestBody.content["application/json"].schema
         .properties.api_key.description,
     ).toContain("takes precedence");
-    expect(openApiSpec.servers[0]?.url).toBe("https://tts2.lovable.app");
+    expect(openApiSpec.servers[0]?.url).toBe("https://tts3.lovable.app");
     expect(tts.post.operationId).toBe("synthesizeSpeech");
     expect(schema.properties.text).toMatchObject({ minLength: 1, maxLength: 5000 });
     expect(schema.properties.lang).toMatchObject({ minLength: 2, maxLength: 20 });

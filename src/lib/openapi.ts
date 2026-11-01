@@ -193,7 +193,7 @@ const usageReportSchema = {
 export const openApiSpec = {
   openapi: "3.1.0",
   info: { title: "Speak API", version: "1.0.0", description: "Text-to-speech with optional translation. CORS enabled." },
-  servers: [{ url: "https://tts2.lovable.app", description: "Speak API production server" }],
+  servers: [{ url: "https://tts3.lovable.app", description: "Speak API production server" }],
   paths: {
     "/api/public/tts": {
       get: {
