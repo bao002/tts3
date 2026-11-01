@@ -55,54 +55,168 @@ export const Route = createFileRoute("/docs")({
   component: ApiDocs,
 });
 
-function ApiDocs() {
-  const [apiToken, setApiToken] = useState("");
-  const [speechText, setSpeechText] = useState("Hello from the Speak API tester.");
-  const [speechLang, setSpeechLang] = useState("en");
-  const [provider, setProvider] = useState("auto");
+function sampleFromSchema(schema: unknown, depth = 0): unknown {
+  if (!isRecord(schema) || depth > 5) return null;
+  if (schema["example"] !== undefined) return schema["example"];
+  if (schema["default"] !== undefined) return schema["default"];
+  if (Array.isArray(schema["enum"])) return schema["enum"][0];
+  const type = schema["type"];
+  if (type === "object" || isRecord(schema["properties"])) {
+    const out: Record<string, unknown> = {};
+    const props = isRecord(schema["properties"]) ? schema["properties"] : {};
+    for (const [key, value] of Object.entries(props)) out[key] = sampleFromSchema(value, depth + 1);
+    return out;
+  }
+  if (type === "array") return [sampleFromSchema(schema["items"], depth + 1)];
+  if (type === "integer" || type === "number") return 0;
+  if (type === "boolean") return false;
+  if (type === "string") return "string";
+  return null;
+}
+
+function sampleBody(requestBody: unknown): string {
+  if (!isRecord(requestBody) || !isRecord(requestBody["content"])) return "";
+  const json = requestBody["content"]["application/json"];
+  if (!isRecord(json)) return "";
+  if (json["example"] !== undefined) return pretty(json["example"]);
+  return pretty(sampleFromSchema(json["schema"]));
+}
+
+type TryResult = { status: string; body: string; audioUrl?: string };
+
+function TryIt({
+  path,
+  method,
+  operation,
+  token,
+}: {
+  path: string;
+  method: HttpMethod;
+  operation: OpenApiOperation;
+  token: string;
+}) {
+  const params = (operation.parameters ?? []).filter((p) => p.in === "path" || p.in === "query");
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const p of params) {
+      const s = isRecord(p.schema) ? p.schema : {};
+      const d = s["example"] ?? s["default"];
+      init[p.name] = d === undefined ? "" : String(d);
+    }
+    return init;
+  });
+  const [body, setBody] = useState(() => sampleBody(operation.requestBody));
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
+  const [result, setResult] = useState<TryResult | null>(null);
 
   useEffect(
     () => () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (result?.audioUrl) URL.revokeObjectURL(result.audioUrl);
     },
-    [audioUrl],
+    [result],
   );
 
-  async function trySpeech(event: FormEvent) {
+  async function send(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
-    setResult("");
-    setAudioUrl("");
+    setResult(null);
     try {
-      const headers = new Headers({ "Content-Type": "application/json" });
-      if (apiToken.trim()) headers.set("Authorization", `Bearer ${apiToken.trim()}`);
-      const response = await fetch("/api/public/tts", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ text: speechText, lang: speechLang, provider }),
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        setResult(`HTTP ${response.status}: ${body || response.statusText}`);
-        return;
+      let url = path;
+      const query = new URLSearchParams();
+      for (const p of params) {
+        const v = values[p.name] ?? "";
+        if (p.in === "path") url = url.replace(`{${p.name}}`, encodeURIComponent(v));
+        else if (v !== "") query.set(p.name, v);
       }
-      const blob = await response.blob();
-      if (blob.type.startsWith("audio/")) {
-        setAudioUrl(URL.createObjectURL(blob));
-        setResult(`HTTP ${response.status} · ${blob.type} · ${blob.size} bytes`);
+      const qs = query.toString();
+      if (qs) url += `?${qs}`;
+      const headers = new Headers();
+      if (token.trim()) headers.set("Authorization", `Bearer ${token.trim()}`);
+      const init: RequestInit = { method: method.toUpperCase(), headers };
+      if (operation.requestBody !== undefined && method !== "get" && body.trim()) {
+        headers.set("Content-Type", "application/json");
+        init.body = body;
+      }
+      const response = await fetch(url, init);
+      const type = response.headers.get("content-type") ?? "";
+      const status = `HTTP ${response.status} ${response.statusText} · ${type || "no content-type"}`;
+      if (type.startsWith("audio/")) {
+        const blob = await response.blob();
+        setResult({
+          status: `${status} · ${blob.size} bytes`,
+          body: "",
+          audioUrl: URL.createObjectURL(blob),
+        });
       } else {
-        setResult(`HTTP ${response.status}: ${await blob.text()}`);
+        const text = await response.text();
+        let shown = text;
+        try {
+          shown = pretty(JSON.parse(text));
+        } catch {
+          /* not JSON */
+        }
+        setResult({ status, body: shown });
       }
     } catch (reason) {
-      setResult(reason instanceof Error ? reason.message : String(reason));
+      setResult({
+        status: "Request failed",
+        body: reason instanceof Error ? reason.message : String(reason),
+      });
     } finally {
       setBusy(false);
     }
   }
 
+  return (
+    <details className="mt-4 border-t border-border pt-3">
+      <summary className="cursor-pointer text-sm font-semibold">Try it out</summary>
+      <form className="mt-3 space-y-3" onSubmit={(event) => void send(event)}>
+        {params.map((p) => (
+          <label key={`${p.in}-${p.name}`} className="block text-xs text-muted-foreground">
+            {p.name} ({p.in}
+            {p.required ? ", required" : ""})
+            <input
+              className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
+              value={values[p.name] ?? ""}
+              required={p.required}
+              onChange={(event) => setValues({ ...values, [p.name]: event.target.value })}
+            />
+          </label>
+        ))}
+        {operation.requestBody !== undefined && method !== "get" && (
+          <label className="block text-xs text-muted-foreground">
+            JSON body
+            <textarea
+              className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              rows={Math.min(14, Math.max(4, body.split("\n").length))}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          </label>
+        )}
+        <button
+          type="submit"
+          className="bg-foreground px-4 py-2 text-sm text-background disabled:opacity-50"
+          disabled={busy}
+        >
+          {busy ? "Sending…" : `Send ${method.toUpperCase()}`}
+        </button>
+      </form>
+      {result && (
+        <div role="status" className="mt-3 text-sm">
+          <p className="font-mono text-xs">{result.status}</p>
+          {result.audioUrl && <audio className="mt-2 w-full" controls src={result.audioUrl} />}
+          {result.body && (
+            <pre className="mt-2 max-h-96 overflow-auto bg-muted p-3 text-xs">{result.body}</pre>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
+function ApiDocs() {
+  const [apiToken, setApiToken] = useState("");
   const operations = Object.entries(openApiSpec.paths).flatMap(([path, pathItem]) =>
     methods.flatMap((method) => {
       const operation = Reflect.get(pathItem, method);
@@ -130,6 +244,29 @@ function ApiDocs() {
           </a>
         </p>
       </header>
+
+      <section className="sticky top-0 z-10 mt-6 border border-border bg-background p-4">
+        <label className="block text-sm font-semibold">
+          API token
+          <input
+            aria-label="API token"
+            className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm font-normal"
+            type="password"
+            autoComplete="off"
+            placeholder="Paste a personal API token, session token, or management token"
+            value={apiToken}
+            onChange={(event) => setApiToken(event.target.value)}
+          />
+        </label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Sent as <code>Authorization: Bearer …</code> with every "Try it out" request. Kept in this
+          page only. Get one on the{" "}
+          <Link to="/tokens" className="underline">
+            tokens page
+          </Link>
+          .
+        </p>
+      </section>
 
       <section aria-label="API operations" className="mt-8 space-y-4">
         {operations.map(({ path, method, operation }) => (
@@ -188,98 +325,10 @@ function ApiDocs() {
                   </ul>
                 </details>
               )}
+              <TryIt path={path} method={method} operation={operation} token={apiToken} />
             </div>
           </article>
         ))}
-      </section>
-
-      <section className="mt-8 border border-border p-4">
-        <h2 className="font-semibold">Try a speech request</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Optionally enter a personal API token. It is held in this page's memory only, sent as a
-          bearer header, and never added to the URL or request summary.
-        </p>
-        <form className="mt-4 space-y-3" onSubmit={(event) => void trySpeech(event)}>
-          <label className="block text-xs text-muted-foreground">
-            Personal API token (optional)
-            <input
-              aria-label="Personal API token"
-              className="mt-1 w-full border border-border bg-background px-3 py-2 text-sm"
-              type="password"
-              autoComplete="off"
-              value={apiToken}
-              onChange={(event) => setApiToken(event.target.value)}
-            />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs text-muted-foreground">
-              Provider
-              <select
-                aria-label="Tester provider"
-                className="mt-1 w-full border border-border bg-background px-3 py-2 text-sm"
-                value={provider}
-                onChange={(event) => setProvider(event.target.value)}
-              >
-                {[
-                  "auto",
-                  "google",
-                  "lovable",
-                  "openrouter",
-                  "gemini",
-                  "openai",
-                  "elevenlabs",
-                  "deepgram",
-                ].map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs text-muted-foreground">
-              Language
-              <input
-                aria-label="Tester language"
-                className="mt-1 w-full border border-border bg-background px-3 py-2 text-sm"
-                value={speechLang}
-                onChange={(event) => setSpeechLang(event.target.value)}
-                required
-              />
-            </label>
-          </div>
-          <label className="block text-xs text-muted-foreground">
-            Text
-            <textarea
-              aria-label="Tester text"
-              className="mt-1 w-full border border-border bg-background px-3 py-2 text-sm"
-              rows={3}
-              maxLength={5000}
-              value={speechText}
-              onChange={(event) => setSpeechText(event.target.value)}
-              required
-            />
-          </label>
-          <button
-            type="submit"
-            className="bg-foreground px-4 py-2 text-sm text-background disabled:opacity-50"
-            disabled={busy}
-          >
-            {busy ? "Sending…" : "Send request"}
-          </button>
-        </form>
-        {result && (
-          <p role="status" className="mt-3 break-words text-sm">
-            {result}
-          </p>
-        )}
-        {audioUrl && <audio className="mt-3 w-full" controls src={audioUrl} />}
-        <p className="mt-4 text-sm text-muted-foreground">
-          For other operations, use the{" "}
-          <Link to="/" className="underline">
-            speech playground
-          </Link>{" "}
-          or send requests directly.
-        </p>
       </section>
     </main>
   );
