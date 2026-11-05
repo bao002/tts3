@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { synthesize, HttpError, bytesToB64 } from "@/lib/tts.server";
+import { runWithTrace, redactHeaders, type TraceEntry } from "@/lib/trace.server";
 import { record, cacheGet, cacheSet } from "@/lib/monitor.server";
 import { resolveApiUser, UserAuthError } from "@/lib/user-account.server";
 
@@ -45,6 +46,10 @@ const schema = z.object({
   speed: z.coerce.number().min(0.25).max(4).optional(),
   options: optionsSchema,
   format: z.enum(["binary", "json"]).default("binary"),
+  debug: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => v === true || v === "true" || v === "1"),
 });
 
 async function handle(
@@ -52,6 +57,7 @@ async function handle(
   method: string,
   userId?: string,
   headerApiKey?: string,
+  incoming?: { url: string; headers: Headers },
 ) {
   const request = headerApiKey?.trim() ? { ...raw, api_key: headerApiKey.trim() } : raw;
   const t0 = Date.now();
@@ -102,11 +108,21 @@ async function handle(
     p.options ?? null,
     p.text,
   ]);
+  const trace: TraceEntry[] = [];
+  const serverLog = () => ({
+    received: {
+      method,
+      url: incoming?.url,
+      headers: incoming ? redactHeaders(incoming.headers) : undefined,
+      body: { ...p, ...(p.api_key ? { api_key: "[redacted]" } : {}) },
+    },
+    provider_calls: trace,
+  });
   try {
-    let r = p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
+    let r = p.debug || p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
     const cached = !!r;
     if (!r) {
-      r = await synthesize({
+      const input = {
         text: p.text,
         lang: p.lang,
         targetLang: p.target_lang || undefined,
@@ -116,7 +132,8 @@ async function handle(
         voice: p.voice || undefined,
         speed: p.speed,
         options: p.options,
-      });
+      };
+      r = p.debug ? await runWithTrace(trace, () => synthesize(input)) : await synthesize(input);
       if (p.provider !== "auto" && !userId && !p.api_key) cacheSet(key, r);
     }
     const responseTimeMs = Date.now() - t0;
@@ -146,7 +163,7 @@ async function handle(
         ? { "X-Provider-Output-Tokens": String(r.usage.outputTokens) }
         : {}),
     };
-    if (p.format === "json")
+    if (p.format === "json" || p.debug)
       return Response.json(
         {
           audio: bytesToB64(r.audio),
@@ -155,6 +172,7 @@ async function handle(
           lang: r.lang,
           provider: r.provider,
           usage: r.usage,
+          ...(p.debug ? { server_log: serverLog() } : {}),
         },
         { headers: { ...CORS, ...extra } },
       );
@@ -183,7 +201,10 @@ async function handle(
       inputChars: p.text.length,
       estimatedInputTokens: Math.ceil(p.text.length / 4),
     });
-    return Response.json({ error: msg }, { status, headers: CORS });
+    return Response.json(
+      { error: msg, ...(p.debug ? { server_log: serverLog() } : {}) },
+      { status, headers: CORS },
+    );
   }
 }
 
@@ -210,6 +231,7 @@ export const Route = createFileRoute("/api/public/tts")({
           "GET",
           userId ?? undefined,
           request.headers.get("X-Provider-API-Key") ?? undefined,
+          request,
         );
       },
       POST: async ({ request }) => {
@@ -237,6 +259,7 @@ export const Route = createFileRoute("/api/public/tts")({
           "POST",
           userId ?? undefined,
           request.headers.get("X-Provider-API-Key") ?? undefined,
+          request,
         );
       },
     },

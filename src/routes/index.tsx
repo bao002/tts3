@@ -1,3 +1,4 @@
+import { buildDirectRequest, headersToObject, isDirectProvider, redactSecretHeaders, type DirectProvider } from "@/lib/direct-tts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
@@ -39,6 +40,8 @@ const quickSamples = {
   it: { text: "Ciao, come stai oggi? La luce della sera è bellissima.", lang: "it" },
 } as const;
 
+type LogEntry = { source: "client" | "server"; title: string; data: unknown };
+
 function Index() {
   const [form, setForm] = useState({
     text: "The warm light flows across the OpenRouter office as the evening settles in and the routing never stops. One interface, hundreds of models. Ready when you are.",
@@ -58,8 +61,8 @@ function Index() {
   const [audio, setAudio] = useState<string | null>(null);
   const [info, setInfo] = useState("");
   const [historyWarning, setHistoryWarning] = useState("");
-  const [lastRequest, setLastRequest] = useState<Record<string, unknown> | null>(null);
-  const [lastResponse, setLastResponse] = useState<Record<string, unknown> | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [direct, setDirect] = useState(false);
   const [busy, setBusy] = useState(false);
   const set = (k: string) => (e: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [k]: e.target.value }));
@@ -104,8 +107,8 @@ function Index() {
     setInfo("");
     setHistoryWarning("");
     setAudio(null);
-    setLastRequest(null);
-    setLastResponse(null);
+    setLogs([]);
+    const log: LogEntry[] = [];
     try {
       let options: Record<string, unknown> | undefined;
       if (
@@ -146,61 +149,120 @@ function Index() {
               },
             }),
           };
-      setLastRequest({
-        method: "POST",
-        url: "/api/public/tts",
-        body: { ...body, ...(body["api_key"] ? { api_key: "[redacted]" } : {}) },
-      });
-      const headers = new Headers({ "Content-Type": "application/json" });
-      if (
-        import.meta.env["VITE_SUPABASE_URL"] &&
-        import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"]
-      ) {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        if (data.session?.access_token) {
-          headers.set("Authorization", `Bearer ${data.session.access_token}`);
-        }
-      }
-      const res = await fetch("/api/public/tts", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const responseText = await res.text();
-        let responseBody: unknown = responseText;
-        let message = `Request failed (${res.status})`;
-        try {
-          responseBody = JSON.parse(responseText);
-          if (responseBody && typeof responseBody === "object" && "error" in responseBody) {
-            const error = responseBody["error"];
-            message = typeof error === "string" ? error : JSON.stringify(error);
-          }
-        } catch {
-          if (responseText) message = responseText;
-        }
-        setLastResponse({
-          status: res.status,
-          statusText: res.statusText,
-          contentType: res.headers.get("Content-Type"),
-          body: responseBody,
+      const useDirect = direct && isDirectProvider(form.provider);
+      if (direct && !useDirect) throw new Error("Direct mode supports OpenAI, OpenRouter, ElevenLabs and Deepgram only");
+      if (useDirect && !form.api_key.trim())
+        throw new Error("Direct mode needs your provider API key (Advanced settings)");
+      let res: Response;
+      if (useDirect) {
+        const req = buildDirectRequest({
+          provider: form.provider as DirectProvider,
+          apiKey: form.api_key.trim(),
+          text: String(body["text"]),
+          lang: String(body["lang"]),
+          voice: typeof body["voice"] === "string" ? body["voice"] : undefined,
+          speed: typeof body["speed"] === "number" ? body["speed"] : undefined,
+          options: body["options"] as Record<string, unknown> | undefined,
         });
-        throw new Error(message);
+        log.push({
+          source: "client",
+          title: `Request → ${req.method} ${req.url}`,
+          data: { method: req.method, url: req.url, headers: redactSecretHeaders(req.headers), body: req.body },
+        });
+        res = await fetch(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body: JSON.stringify(req.body),
+        });
+      } else {
+        body["debug"] = true;
+        const headers = new Headers({ "Content-Type": "application/json" });
+        if (
+          import.meta.env["VITE_SUPABASE_URL"] &&
+          import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"]
+        ) {
+          const { data, error } = await supabase.auth.getSession();
+          if (error) throw error;
+          if (data.session?.access_token) {
+            headers.set("Authorization", `Bearer ${data.session.access_token}`);
+          }
+        }
+        log.push({
+          source: "client",
+          title: "Request → POST /api/public/tts",
+          data: {
+            method: "POST",
+            url: `${window.location.origin}/api/public/tts`,
+            headers: redactSecretHeaders(headersToObject(headers)),
+            body: { ...body, ...(body["api_key"] ? { api_key: "[redacted]" } : {}) },
+          },
+        });
+        res = await fetch("/api/public/tts", { method: "POST", headers, body: JSON.stringify(body) });
       }
-      const blob = await res.blob();
+      const responseInfo = {
+        status: res.status,
+        statusText: res.statusText,
+        headers: headersToObject(res.headers),
+      };
+      let blob: Blob;
+      let meta: { text?: string; lang?: string; provider?: string; usage?: { inputTokens?: number; outputTokens?: number } } = {};
+      if ((res.headers.get("Content-Type") || "").includes("json")) {
+        const json = (await res.json()) as Record<string, unknown>;
+        const { server_log: serverLog, audio: b64, ...rest } = json;
+        if (serverLog && typeof serverLog === "object") {
+          const sl = serverLog as { received?: unknown; provider_calls?: Array<{ request?: { method?: string; url?: string } }> };
+          log.push({ source: "server", title: "Received from client", data: sl.received });
+          (sl.provider_calls ?? []).forEach((call, i) =>
+            log.push({
+              source: "server",
+              title: `Provider call ${i + 1} → ${call.request?.method ?? ""} ${call.request?.url ?? ""}`,
+              data: call,
+            }),
+          );
+          if (!sl.provider_calls?.length)
+            log.push({ source: "server", title: "No provider calls", data: "Served from cache or failed before calling a provider" });
+        }
+        log.push({
+          source: "client",
+          title: `Response ← ${res.status}`,
+          data: { ...responseInfo, body: { ...rest, ...(typeof b64 === "string" ? { audio: `[base64, ${b64.length} chars]` } : {}) } },
+        });
+        if (!res.ok || typeof b64 !== "string") {
+          const error = json["error"];
+          throw new Error(
+            error ? (typeof error === "string" ? error : JSON.stringify(error)) : `Request failed (${res.status})`,
+          );
+        }
+        blob = new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], {
+          type: typeof json["mime"] === "string" ? json["mime"] : "audio/mpeg",
+        });
+        meta = json as typeof meta;
+      } else if (!res.ok) {
+        const text = await res.text();
+        log.push({ source: "client", title: `Response ← ${res.status}`, data: { ...responseInfo, body: text } });
+        throw new Error(text || `Request failed (${res.status})`);
+      } else {
+        blob = await res.blob();
+        log.push({
+          source: "client",
+          title: `Response ← ${res.status}`,
+          data: { ...responseInfo, body: `[binary ${blob.type || "audio"}, ${blob.size} bytes]` },
+        });
+      }
       setAudio(URL.createObjectURL(blob));
       const responseTimeHeader = res.headers.get("X-Response-Time-Ms");
       const responseTimeMs =
         responseTimeHeader === null
           ? Math.round(performance.now() - requestStartedAt)
           : Number(responseTimeHeader);
-      const spokenLanguage = res.headers.get("X-Spoken-Lang") || form.lang;
+      const spokenLanguage = res.headers.get("X-Spoken-Lang") || meta.lang || form.lang;
+      const inTok = res.headers.get("X-Provider-Input-Tokens") ?? meta.usage?.inputTokens;
+      const outTok = res.headers.get("X-Provider-Output-Tokens") ?? meta.usage?.outputTokens;
       try {
         await saveAudioHistory({
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
-          provider: res.headers.get("X-Provider") || form.provider,
+          provider: res.headers.get("X-Provider") || meta.provider || form.provider,
           language: spokenLanguage,
           responseTimeMs: Number.isFinite(responseTimeMs)
             ? responseTimeMs
@@ -208,12 +270,8 @@ function Index() {
           audioBytes: blob.size,
           inputChars: String(body["text"] ?? "").length,
           cached: res.headers.get("X-Cache") === "HIT",
-          ...(res.headers.has("X-Provider-Input-Tokens")
-            ? { providerInputTokens: Number(res.headers.get("X-Provider-Input-Tokens")) }
-            : {}),
-          ...(res.headers.has("X-Provider-Output-Tokens")
-            ? { providerOutputTokens: Number(res.headers.get("X-Provider-Output-Tokens")) }
-            : {}),
+          ...(inTok != null ? { providerInputTokens: Number(inTok) } : {}),
+          ...(outTok != null ? { providerOutputTokens: Number(outTok) } : {}),
           mime: blob.type || res.headers.get("Content-Type") || "audio/mpeg",
           audio: blob,
         });
@@ -224,26 +282,12 @@ function Index() {
           }`,
         );
       }
-      let spokenText = res.headers.get("X-Spoken-Text") || "";
-      try {
-        spokenText = decodeURIComponent(spokenText);
-      } catch {
-        // Keep the raw header if it is not URI-encoded.
-      }
-      setLastResponse({
-        status: res.status,
-        statusText: res.statusText,
-        contentType: blob.type || res.headers.get("Content-Type"),
-        spokenLanguage,
-        cache: res.headers.get("X-Cache"),
-        audioBytes: blob.size,
-        spokenText,
-      });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setInfo(message);
-      setLastResponse((current) => current ?? { error: message });
+      log.push({ source: "client", title: "Error", data: message });
     } finally {
+      setLogs(log);
       setBusy(false);
     }
   }
@@ -449,6 +493,24 @@ function Index() {
             )}
           </div>
         </details>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 accent-foreground"
+            checked={direct}
+            onChange={(e) => setDirect(e.target.checked)}
+          />
+          <span>
+            Send directly to the AI provider from this browser
+            <span className="block text-xs text-muted-foreground">
+              {direct
+                ? isDirectProvider(form.provider)
+                  ? "Skips this server. Uses the API key from Advanced settings."
+                  : "Pick OpenAI, OpenRouter, ElevenLabs or Deepgram to use direct mode."
+                : "Off: the request goes through this server, and the server log is shown below."}
+            </span>
+          </span>
+        </label>
         <button
           onClick={() => void run()}
           disabled={busy}
@@ -477,22 +539,7 @@ function Index() {
           </div>
         )}
         {audio && <audio className="w-full" controls src={audio} />}
-        {lastRequest && (
-          <section className="border-t border-border pt-4">
-            <h2 className="text-sm font-semibold">Request sent</h2>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-3 text-xs">
-              {JSON.stringify(lastRequest, null, 2)}
-            </pre>
-          </section>
-        )}
-        {lastResponse && (
-          <section className="border-t border-border pt-4">
-            <h2 className="text-sm font-semibold">Response</h2>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-3 text-xs">
-              {JSON.stringify(lastResponse, null, 2)}
-            </pre>
-          </section>
-        )}
+        {logs.length > 0 && <RequestLog logs={logs} />}
       </section>
 
       <details className="mt-8 rounded-xl border border-border px-4 py-3">
@@ -505,5 +552,48 @@ function Index() {
         </pre>
       </details>
     </main>
+  );
+}
+
+function RequestLog({ logs }: { logs: LogEntry[] }) {
+  const [filter, setFilter] = useState<"all" | "client" | "server">("all");
+  const shown = logs.filter((l) => filter === "all" || l.source === filter);
+  return (
+    <section className="border-t border-border pt-4" aria-label="Request log">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Request log</h2>
+        <div className="flex gap-1 text-xs">
+          {(["all", "client", "server"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`rounded-md border border-border px-2 py-1 capitalize ${filter === f ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ol className="mt-3 space-y-2">
+        {shown.map((entry, i) => (
+          <li key={i}>
+            <details className="rounded-lg border border-border" open>
+              <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs">
+                <span
+                  className={`rounded px-1.5 py-0.5 font-semibold uppercase ${entry.source === "server" ? "bg-accent text-accent-foreground" : "bg-muted text-foreground"}`}
+                >
+                  {entry.source}
+                </span>
+                <span className="break-all font-mono">{entry.title}</span>
+              </summary>
+              <pre className="max-h-96 overflow-auto border-t border-border bg-muted p-3 text-xs">
+                {typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data, null, 2)}
+              </pre>
+            </details>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

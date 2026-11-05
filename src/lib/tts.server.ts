@@ -1,4 +1,5 @@
 // Server-only TTS + translation providers.
+import { tracedFetch } from "./trace.server";
 import { speechBody } from "./fish-audio";
 export type Provider =
   "auto" | "google" | "lovable" | "openrouter" | "gemini" | "openai" | "elevenlabs" | "deepgram";
@@ -94,7 +95,7 @@ function chunkText(text: string, max = 180): string[] {
 // ---------------- Google ----------------
 async function googleTranslate(text: string, sl: string, tl: string) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl || "auto")}&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(text)}`;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
+  const res = await tracedFetch(url, { headers: { "User-Agent": UA } });
   if (!res.ok) throw new HttpError(502, `Google translate failed (${res.status})`);
   const data = (await res.json()) as [Array<[string]>];
   return data[0].map((s) => s[0]).join("");
@@ -107,7 +108,7 @@ async function googleTts(text: string, lang: string, speed?: number) {
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i] ?? "";
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(chunk)}&total=${chunks.length}&idx=${i}&textlen=${chunk.length}${speedParam}`;
-    const res = await fetch(url, {
+    const res = await tracedFetch(url, {
       headers: { "User-Agent": UA, Referer: "https://translate.google.com/" },
     });
     if (!res.ok) throw new HttpError(502, `Google TTS failed (${res.status})`);
@@ -132,7 +133,7 @@ async function lovableTranslate(
     "lovable",
     apiKey,
     (key) =>
-      fetch(`${GATEWAY}/responses`, {
+      tracedFetch(`${GATEWAY}/responses`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
@@ -192,7 +193,7 @@ async function lovableTts(
     "lovable",
     apiKey,
     (key) =>
-      fetch(`${GATEWAY}/audio/speech`, {
+      tracedFetch(`${GATEWAY}/audio/speech`, {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -254,7 +255,7 @@ async function geminiTts(
     "gemini",
     apiKey,
     (key) =>
-      fetch(
+      tracedFetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
           method: "POST",
@@ -308,7 +309,7 @@ async function openaiTts(
     "openai",
     apiKey,
     (key) =>
-      fetch("https://api.openai.com/v1/audio/speech", {
+      tracedFetch("https://api.openai.com/v1/audio/speech", {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -343,7 +344,7 @@ async function elevenLabsTts(
     "elevenlabs",
     apiKey,
     (key) =>
-      fetch(
+      tracedFetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
         {
           method: "POST",
@@ -399,7 +400,7 @@ async function deepgramTts(
     "deepgram",
     apiKey,
     (key) =>
-      fetch(`https://api.deepgram.com/v1/speak?${query}`, {
+      tracedFetch(`https://api.deepgram.com/v1/speak?${query}`, {
         method: "POST",
         headers: {
           Authorization: `Token ${key}`,
@@ -699,7 +700,7 @@ function providerKeySetupMessage(
 }
 
 function orFetch(key: string, body: unknown) {
-  return fetch("https://openrouter.ai/api/v1/chat/completions", {
+  return tracedFetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -750,7 +751,7 @@ async function openrouterTts(
     "openrouter",
     apiKey,
     (k) =>
-      fetch("https://openrouter.ai/api/v1/audio/speech", {
+      tracedFetch("https://openrouter.ai/api/v1/audio/speech", {
         method: "POST",
         headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
         body: JSON.stringify(speechBody(text, lang, voice, speed, options)),
