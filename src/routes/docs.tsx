@@ -215,6 +215,104 @@ function TryIt({
   );
 }
 
+function ClientSnippets({
+  path,
+  method,
+  operation,
+  token,
+}: {
+  path: string;
+  method: HttpMethod;
+  operation: OpenApiOperation;
+  token: string;
+}) {
+  const [tab, setTab] = useState<"fetch" | "curl">("fetch");
+  const [copied, setCopied] = useState(false);
+
+  const base = typeof window === "undefined" ? "https://tts3.lovable.app" : window.location.origin;
+  const bearer = token.trim() || "YOUR_API_TOKEN";
+  const params = (operation.parameters ?? []).filter((p) => p.in === "query");
+  const query = params
+    .map((p) => {
+      const s = isRecord(p.schema) ? p.schema : {};
+      const d = s["example"] ?? s["default"];
+      return d === undefined ? null : `${p.name}=${encodeURIComponent(String(d))}`;
+    })
+    .filter(Boolean)
+    .join("&");
+  const url = `${base}${path}${query ? `?${query}` : ""}`;
+  const body = operation.requestBody !== undefined && method !== "get" ? sampleBody(operation.requestBody) : "";
+  const upper = method.toUpperCase();
+
+  const fetchSnippet = [
+    `const response = await fetch("${url}", {`,
+    `  method: "${upper}",`,
+    `  headers: {`,
+    `    Authorization: "Bearer ${bearer}",`,
+    ...(body ? [`    "Content-Type": "application/json",`] : []),
+    `  },`,
+    ...(body ? [`  body: JSON.stringify(${body.trim()}),`] : []),
+    `});`,
+    ``,
+    `if (response.headers.get("content-type")?.startsWith("audio/")) {`,
+    `  const blob = await response.blob(); // play or save the audio`,
+    `} else {`,
+    `  const data = await response.json();`,
+    `}`,
+  ].join("\n");
+
+  const curlSnippet = [
+    `curl -X ${upper} "${url}" \\`,
+    `  -H "Authorization: Bearer ${bearer}"${body ? " \\" : ""}`,
+    ...(body ? [`  -H "Content-Type: application/json" \\`, `  -d '${body.trim().replace(/\n\s*/g, " ")}'`] : []),
+  ].join("\n");
+
+  const snippet = tab === "fetch" ? fetchSnippet : curlSnippet;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <details className="mt-4 border-t border-border pt-3">
+      <summary className="cursor-pointer text-sm font-semibold">Client code</summary>
+      <div className="mt-3">
+        <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            className={`border border-border px-3 py-1 ${tab === "fetch" ? "bg-foreground text-background" : ""}`}
+            onClick={() => setTab("fetch")}
+          >
+            Browser fetch
+          </button>
+          <button
+            type="button"
+            className={`border border-border px-3 py-1 ${tab === "curl" ? "bg-foreground text-background" : ""}`}
+            onClick={() => setTab("curl")}
+          >
+            curl
+          </button>
+          <button type="button" className="ml-auto underline" onClick={() => void copy()}>
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+        <pre className="mt-2 max-h-96 overflow-auto bg-muted p-3 text-xs">{snippet}</pre>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {token.trim()
+            ? "Your token from the box above is already filled in."
+            : "Paste a token in the box above and it will be filled into the sample automatically."}
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function ApiDocs() {
   const [apiToken, setApiToken] = useState("");
   const operations = Object.entries(openApiSpec.paths).flatMap(([path, pathItem]) =>
