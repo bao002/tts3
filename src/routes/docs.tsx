@@ -423,6 +423,7 @@ function ApiDocs() {
                   </ul>
                 </details>
               )}
+              <ClientSnippets path={path} method={method} operation={operation} token={apiToken} />
               <TryIt path={path} method={method} operation={operation} token={apiToken} />
             </div>
           </article>
