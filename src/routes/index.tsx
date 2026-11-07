@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { openApiSpec } from "@/lib/openapi";
 import { speechLanguages } from "@/lib/fish-audio";
+import { providerVoices } from "@/lib/voices";
 import { detectLanguageCode } from "@/lib/language-detection";
 import { saveAudioHistory } from "@/lib/audio-history";
 import { supabase } from "@/integrations/supabase/client";
@@ -64,8 +65,24 @@ function Index() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [direct, setDirect] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [customVoice, setCustomVoice] = useState(false);
   const set = (k: string) => (e: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [k]: e.target.value }));
+  const setProvider = (e: { target: { value: string } }) => {
+    setCustomVoice(false);
+    setForm((current) => ({ ...current, provider: e.target.value, voice: "" }));
+  };
+  const voiceOptions = providerVoices[form.provider] ?? [];
+  const selectVoice = (e: { target: { value: string } }) => {
+    const v = e.target.value;
+    if (v === "__custom") {
+      setCustomVoice(true);
+      setForm((current) => ({ ...current, voice: "" }));
+    } else {
+      setCustomVoice(false);
+      setForm((current) => ({ ...current, voice: v }));
+    }
+  };
   const setText = (e: { target: { value: string } }) => {
     const text = e.target.value;
     const lang = detectLanguageCode(text);
@@ -328,7 +345,7 @@ function Index() {
             aria-label="Provider"
             className={`${field} mt-1`}
             value={form.provider}
-            onChange={set("provider")}
+            onChange={setProvider}
           >
             <option value="auto">Auto (random healthy provider)</option>
             <option value="google">Google</option>
@@ -407,16 +424,46 @@ function Index() {
             {form.provider !== "auto" && form.provider !== "google" && (
               <label className="block text-xs text-muted-foreground">
                 {form.provider === "deepgram" ? "Aura model (optional)" : "Voice (optional)"}
-                <input
-                  className={`${field} mt-1`}
-                  placeholder={
-                    form.provider === "deepgram"
-                      ? "Use language default, e.g. aura-2-thalia-en"
-                      : "Use provider default"
-                  }
-                  value={form.voice}
-                  onChange={set("voice")}
-                />
+                {voiceOptions.length > 0 ? (
+                  <>
+                    <select
+                      aria-label="Voice"
+                      className={`${field} mt-1`}
+                      value={customVoice ? "__custom" : form.voice}
+                      onChange={selectVoice}
+                    >
+                      <option value="">Provider default</option>
+                      {voiceOptions.map((v) => (
+                        <option key={v.value} value={v.value}>
+                          {v.label}
+                        </option>
+                      ))}
+                      <option value="__custom">Custom…</option>
+                    </select>
+                    {customVoice && (
+                      <input
+                        aria-label="Custom voice"
+                        className={`${field} mt-2`}
+                        placeholder={
+                          form.provider === "deepgram"
+                            ? "e.g. aura-2-thalia-en"
+                            : form.provider === "openrouter"
+                              ? "Fish Audio voice ID (32 hex chars)"
+                              : "Voice name or ID"
+                        }
+                        value={form.voice}
+                        onChange={set("voice")}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <input
+                    className={`${field} mt-1`}
+                    placeholder="Voice ID from your ElevenLabs account"
+                    value={form.voice}
+                    onChange={set("voice")}
+                  />
+                )}
               </label>
             )}
             {form.provider === "openrouter" && (
