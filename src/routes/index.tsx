@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { openApiSpec } from "@/lib/openapi";
 import { speechLanguages } from "@/lib/fish-audio";
+import { providerVoices } from "@/lib/voices";
 import { detectLanguageCode } from "@/lib/language-detection";
 import { saveAudioHistory } from "@/lib/audio-history";
 import { supabase } from "@/integrations/supabase/client";
@@ -64,8 +65,24 @@ function Index() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [direct, setDirect] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [customVoice, setCustomVoice] = useState(false);
   const set = (k: string) => (e: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [k]: e.target.value }));
+  const setProvider = (e: { target: { value: string } }) => {
+    setCustomVoice(false);
+    setForm((current) => ({ ...current, provider: e.target.value, voice: "" }));
+  };
+  const voiceOptions = providerVoices[form.provider] ?? [];
+  const selectVoice = (e: { target: { value: string } }) => {
+    const v = e.target.value;
+    if (v === "__custom") {
+      setCustomVoice(true);
+      setForm((current) => ({ ...current, voice: "" }));
+    } else {
+      setCustomVoice(false);
+      setForm((current) => ({ ...current, voice: v }));
+    }
+  };
   const setText = (e: { target: { value: string } }) => {
     const text = e.target.value;
     const lang = detectLanguageCode(text);
