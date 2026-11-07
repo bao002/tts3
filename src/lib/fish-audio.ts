@@ -37,8 +37,8 @@ export const speechLanguages = [
   ['fr-CA', 'French (Canada)'],
 ] as const;
 
-const defaultVoice = 'b347db033a6549378b48d00acb0d06cd';
-const licensedLanguageVoices: Record<string, string> = {
+export const defaultVoice = 'b347db033a6549378b48d00acb0d06cd';
+export const licensedLanguageVoices: Record<string, string> = {
   fr: 'fce1bed339724d91b5c9c4d01bb6e796',
   it: '081b06713d084d4da1724846b52832ac',
   es: 'f40c5dc43e7e4e3ba641b6e8b53ad7c2',
