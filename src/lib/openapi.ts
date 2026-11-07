@@ -65,7 +65,18 @@ const params = {
     type: "string",
     maxLength: 50,
     description:
-      "Provider-specific voice. Gemini: prebuilt voice name (default Kore). OpenAI: voice name (default coral). ElevenLabs: voice ID (default JBFqnCBsd6RMkjVDRZzb). Deepgram: Aura model ID; defaults by lang for English, Spanish, German, Dutch, French, Italian, and Japanese, otherwise English. OpenRouter: provider-specific voice ID; Fish Audio chooses a licensed voice matching lang when available. Auto ignores this field.",
+      "Provider-specific voice. Gemini/Lovable: prebuilt voice name (default Kore; e.g. Puck, Charon, Fenrir, Aoede). OpenAI: voice name (default coral; alloy, ash, ballad, echo, fable, nova, onyx, sage, shimmer, verse). ElevenLabs: voice ID (default JBFqnCBsd6RMkjVDRZzb). Deepgram: Aura model ID (aura-…); defaults by lang. OpenRouter: Fish Audio 32-char hex voice ID; defaults to a licensed voice matching lang. With provider=auto the voice is only forwarded to the provider it belongs to (detected by format/name); other providers use their default. Prefer `voices` for auto.",
+    example: "Kore",
+  },
+  voices: {
+    type: "object",
+    description:
+      "Per-provider voice map, e.g. {\"gemini\":\"Kore\",\"openai\":\"coral\",\"openrouter\":\"b347db033a6549378b48d00acb0d06cd\"}. Takes precedence over `voice` for the provider that serves the request — ideal with provider=auto. For GET, pass as URL-encoded JSON.",
+    additionalProperties: false,
+    properties: Object.fromEntries(
+      keyedProviders.map((p) => [p, { type: "string", maxLength: 50 }]),
+    ),
+    example: { gemini: "Kore", lovable: "Kore", openai: "coral", deepgram: "aura-2-thalia-en" },
   },
   speed: {
     type: "number",
@@ -206,11 +217,11 @@ export const openApiSpec = {
             in: "query",
             required: name === "text" || name === "lang",
             schema:
-              name === "options"
+              name === "options" || name === "voices"
                 ? {
                     type: "string",
                     maxLength: 2000,
-                    description: "URL-encoded JSON object of provider options.",
+                    description: `URL-encoded JSON object (${name}).`,
                   }
                 : schema,
           })),

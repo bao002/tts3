@@ -11,9 +11,49 @@ export type TtsInput = {
   apiKey?: string | undefined;
   userId?: string | undefined;
   voice?: string | undefined;
+  voices?: Partial<Record<string, string>> | undefined;
   speed?: number | undefined;
   options?: Record<string, unknown> | undefined;
 };
+
+const GEMINI_VOICES = new Set(
+  "zephyr puck charon kore fenrir leda orus aoede callirrhoe autonoe enceladus iapetus umbriel algieba despina erinome algenib rasalgethi laomedeia achernar alnilam schedar gacrux pulcherrima achird zubenelgenubi vindemiatrix sadachbia sadaltager sulafat".split(" "),
+);
+const OPENAI_VOICES = new Set(
+  "alloy ash ballad coral echo fable nova onyx sage shimmer verse marin cedar".split(" "),
+);
+
+/** Whether a voice string plausibly belongs to the given provider. */
+export function voiceFitsProvider(provider: string, voice: string): boolean {
+  const v = voice.trim();
+  switch (provider) {
+    case "gemini":
+    case "lovable":
+      return GEMINI_VOICES.has(v.toLowerCase());
+    case "openai":
+      return OPENAI_VOICES.has(v.toLowerCase());
+    case "deepgram":
+      return /^aura-/i.test(v);
+    case "openrouter":
+      return /^[0-9a-f]{32}$/i.test(v);
+    case "elevenlabs":
+      return /^[A-Za-z0-9]{20}$/.test(v);
+    default:
+      return false;
+  }
+}
+
+/** Voice to use for a concrete provider: per-provider map wins; with auto, `voice` only if it fits. */
+export function resolveVoice(
+  provider: string,
+  input: Pick<TtsInput, "voice" | "voices">,
+  strict: boolean,
+): string | undefined {
+  const mapped = input.voices?.[provider];
+  if (mapped) return mapped;
+  if (!input.voice) return undefined;
+  return !strict || voiceFitsProvider(provider, input.voice) ? input.voice : undefined;
+}
 export type ProviderUsage = { inputTokens?: number | undefined; outputTokens?: number | undefined };
 export type TtsResult = {
   audio: Uint8Array;
@@ -791,7 +831,7 @@ async function synthesizeAuto(input: TtsInput): Promise<TtsResult> {
     let lastError: unknown;
     for (const { service, apiKey } of candidates) {
       try {
-        return await synthesize({ ...request, provider: service, apiKey });
+        return await synthesize({ ...request, provider: service, apiKey, voice: resolveVoice(service, request, true), voices: undefined });
       } catch (error) {
         lastError = error;
         const status = error instanceof HttpError ? error.status : 599;
@@ -816,7 +856,7 @@ async function synthesizeAuto(input: TtsInput): Promise<TtsResult> {
     let lastError: unknown;
     for (const { service, apiKey } of candidates) {
       try {
-        return await synthesize({ ...request, provider: service, apiKey });
+        return await synthesize({ ...request, provider: service, apiKey, voice: resolveVoice(service, request, true), voices: undefined });
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 599;
         lastError = error;
@@ -854,7 +894,13 @@ async function synthesizeAuto(input: TtsInput): Promise<TtsResult> {
     if (!(KEY_SERVICES as readonly string[]).includes(row.service)) continue;
     const provider = row.service as KeyService;
     try {
-      const result = await synthesize({ ...request, provider, apiKey: await decryptKey(row) });
+      const result = await synthesize({
+        ...request,
+        provider,
+        apiKey: await decryptKey(row),
+        voice: resolveVoice(provider, request, true),
+        voices: undefined,
+      });
       const mark = input.userId ? markUserKey(input.userId, row.id, 200) : markKey(row.id, 200);
       await mark.catch((error) => console.error("Could not update provider key status", error));
       return { ...result, provider };
@@ -883,6 +929,7 @@ async function synthesizeAuto(input: TtsInput): Promise<TtsResult> {
 // ---------------- Entry ----------------
 export async function synthesize(input: TtsInput): Promise<TtsResult> {
   if (input.provider === "auto") return synthesizeAuto(input);
+  if (input.voices) input = { ...input, voice: resolveVoice(input.provider, input, false), voices: undefined };
   let { text } = input;
   let usage: ProviderUsage | undefined;
   const target = input.targetLang?.trim();

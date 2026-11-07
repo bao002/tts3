@@ -43,6 +43,14 @@ const schema = z.object({
     .default("google"),
   api_key: z.string().max(500).optional().or(z.literal("")),
   voice: z.string().max(50).optional().or(z.literal("")),
+  voices: optionsSchema.pipe(
+    z
+      .record(
+        z.enum(["lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"]),
+        z.string().max(50),
+      )
+      .optional(),
+  ),
   speed: z.coerce.number().min(0.25).max(4).optional(),
   options: optionsSchema,
   format: z.enum(["binary", "json"]).default("binary"),
@@ -104,6 +112,7 @@ async function handle(
     p.lang,
     p.target_lang || "",
     p.voice || "",
+    p.voices ?? null,
     p.speed ?? "",
     p.options ?? null,
     p.text,
@@ -130,6 +139,7 @@ async function handle(
         userId,
         apiKey: p.api_key || undefined,
         voice: p.voice || undefined,
+        voices: p.voices,
         speed: p.speed,
         options: p.options,
       };

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/account'
+import { Route as ApiDocsRouteImport } from './routes/api-docs'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as HistoryRouteImport } from './routes/history'
@@ -35,6 +36,11 @@ const IndexRoute = IndexRouteImport.update({
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocsRoute = ApiDocsRouteImport.update({
+  id: '/api-docs',
+  path: '/api-docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -116,6 +122,7 @@ const ApiUserTokenRoute = ApiUserTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/api-docs': typeof ApiDocsRoute
   '/docs': typeof DocsRoute
   '/health': typeof HealthRoute
   '/history': typeof HistoryRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/api-docs': typeof ApiDocsRoute
   '/docs': typeof DocsRoute
   '/health': typeof HealthRoute
   '/history': typeof HistoryRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/api-docs': typeof ApiDocsRoute
   '/docs': typeof DocsRoute
   '/health': typeof HealthRoute
   '/history': typeof HistoryRoute
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/account'
+    | '/api-docs'
     | '/docs'
     | '/health'
     | '/history'
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/account'
+    | '/api-docs'
     | '/docs'
     | '/health'
     | '/history'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/account'
+    | '/api-docs'
     | '/docs'
     | '/health'
     | '/history'
@@ -234,6 +246,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
+  ApiDocsRoute: typeof ApiDocsRoute
   DocsRoute: typeof DocsRoute
   HealthRoute: typeof HealthRoute
   HistoryRoute: typeof HistoryRoute
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/account'
       preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-docs': {
+      id: '/api-docs'
+      path: '/api-docs'
+      fullPath: '/api-docs'
+      preLoaderRoute: typeof ApiDocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -378,6 +398,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
+  ApiDocsRoute: ApiDocsRoute,
   DocsRoute: DocsRoute,
   HealthRoute: HealthRoute,
   HistoryRoute: HistoryRoute,
