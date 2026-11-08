@@ -68,6 +68,7 @@ function Index() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [direct, setDirect] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [playingAll, setPlayingAll] = useState<string | null>(null);
   const [customVoice, setCustomVoice] = useState(false);
   const set = (k: string) => (e: { target: { value: string } }) =>
     setForm((current) => ({ ...current, [k]: e.target.value }));
@@ -121,6 +122,52 @@ function Index() {
       .catch(() => setInfo("Could not load OpenRouter models"))
       .finally(() => setModelsLoading(false));
   }, []);
+
+  async function playAllProviders() {
+    const all = ["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"];
+    setBusy(true);
+    setInfo("");
+    setAudio(null);
+    const results: string[] = [];
+    try {
+      for (const provider of all) {
+        setPlayingAll(provider);
+        try {
+          const res = await fetch("/api/public/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: form.text,
+              lang: form.lang,
+              ...(form.target_lang && { target_lang: form.target_lang }),
+              provider,
+              ...(form.speed && { speed: Number(form.speed) }),
+            }),
+          });
+          if (!res.ok) {
+            const err = (await res.json().catch(() => ({}))) as { error?: unknown };
+            results.push(`${provider}: failed (${typeof err.error === "string" ? err.error.slice(0, 80) : res.status})`);
+            continue;
+          }
+          const url = URL.createObjectURL(await res.blob());
+          setAudio(url);
+          await new Promise<void>((resolve) => {
+            const a = new Audio(url);
+            a.onended = () => resolve();
+            a.onerror = () => resolve();
+            a.play().catch(() => resolve());
+          });
+          results.push(`${provider}: played`);
+        } catch (e) {
+          results.push(`${provider}: failed (${e instanceof Error ? e.message : String(e)})`);
+        }
+      }
+    } finally {
+      setPlayingAll(null);
+      setBusy(false);
+      setInfo(results.join(" · "));
+    }
+  }
 
   async function run(quickRequest?: { text: string; lang: string }) {
     const requestStartedAt = performance.now();
@@ -587,7 +634,15 @@ function Index() {
           disabled={busy}
           className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
-          {busy ? "Generating…" : "Generate audio"}
+          {busy && !playingAll ? "Generating…" : "Generate audio"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void playAllProviders()}
+          disabled={busy}
+          className="min-h-11 w-full sm:ml-2 sm:w-auto"
+        >
+          {playingAll ? `Playing ${playingAll}…` : "Play with all providers"}
         </Button>
         {info && (
           <div role="alert" className="break-all text-sm text-destructive">
