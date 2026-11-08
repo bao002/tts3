@@ -21,7 +21,7 @@ async function handle(request: Request) {
     let service: KeyService = (requestedService || url.searchParams.get('service') || 'openrouter') as KeyService;
     if (!pool.KEY_SERVICES.includes(service)) return Response.json({ error: 'Unsupported service' }, { status: 400, headers: CORS });
     if (request.method === 'POST') {
-      let body: Record<string, unknown>;
+      let body: { service?: unknown; reset?: unknown; key?: unknown };
       try {
         const raw: unknown = await request.json();
         if (!isRequestObject(raw)) return Response.json({ error: 'JSON body must be an object' }, { status: 400, headers: CORS });
