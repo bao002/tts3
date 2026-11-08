@@ -1,7 +1,8 @@
 // Browser-side direct calls to TTS providers (user supplies their own key).
 import { speechBody } from "./fish-audio";
+import { redactHeaders } from "./request-safety";
 
-export const DIRECT_PROVIDERS = ["openai", "openrouter", "elevenlabs", "deepgram"] as const;
+export const DIRECT_PROVIDERS = ["openai", "openrouter", "gemini", "elevenlabs", "deepgram"] as const;
 export type DirectProvider = (typeof DIRECT_PROVIDERS)[number];
 
 export function isDirectProvider(p: string): p is DirectProvider {
@@ -37,6 +38,21 @@ export function buildDirectRequest(i: DirectInput): {
   const o = i.options;
   const str = (k: string) => (typeof o?.[k] === "string" ? (o[k] as string) : undefined);
   switch (i.provider) {
+    case "gemini": {
+      const model = str("model") ?? "gemini-2.5-flash-preview-tts";
+      return {
+        url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        method: "POST",
+        headers: { "x-goog-api-key": i.apiKey, "Content-Type": "application/json" },
+        body: {
+          contents: [{ parts: [{ text: `Speak naturally in ${i.lang}: ${i.text}` }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: i.voice || "Kore" } } },
+          },
+        },
+      };
+    }
     case "openai":
       return {
         url: "https://api.openai.com/v1/audio/speech",
@@ -93,11 +109,7 @@ export function buildDirectRequest(i: DirectInput): {
 }
 
 export function redactSecretHeaders(h: Record<string, string>) {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(h)) {
-    out[k] = /authorization|api-key/i.test(k) ? v.replace(/(\S{4})\S+$/, "$1…[redacted]") : v;
-  }
-  return out;
+  return redactHeaders(h);
 }
 
 export function headersToObject(h: Headers) {

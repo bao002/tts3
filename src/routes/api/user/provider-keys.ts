@@ -10,6 +10,7 @@ import {
   type KeyService,
 } from "@/lib/openrouter-pool.server";
 import { requireSupabaseUser, UserAuthError } from "@/lib/user-account.server";
+import { isRequestObject } from "@/lib/request-safety";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -39,7 +40,9 @@ async function handle(request: Request) {
     if (request.method === "POST") {
       let body: { id?: unknown; service?: unknown; key?: unknown; test?: unknown };
       try {
-        body = await request.json();
+        const raw: unknown = await request.json();
+        if (!isRequestObject(raw)) return Response.json({ error: "JSON body must be an object" }, { status: 400, headers: CORS });
+        body = raw;
       } catch {
         return Response.json({ error: "Invalid JSON body" }, { status: 400, headers: CORS });
       }

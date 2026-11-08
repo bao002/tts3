@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { synthesize, HttpError, bytesToB64 } from "@/lib/tts.server";
-import { runWithTrace, redactHeaders, type TraceEntry } from "@/lib/trace.server";
+import { runWithTrace, redactHeaders, redactUrl, type TraceEntry } from "@/lib/trace.server";
+import { isRequestObject, redactBody } from "@/lib/request-safety";
 import { record, cacheGet, cacheSet } from "@/lib/monitor.server";
 import { resolveApiUser, UserAuthError } from "@/lib/user-account.server";
 
 const CORS = {
+  "Cache-Control": "no-store",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "*",
@@ -121,9 +123,9 @@ async function handle(
   const serverLog = () => ({
     received: {
       method,
-      url: incoming?.url,
+      url: incoming ? redactUrl(incoming.url) : undefined,
       headers: incoming ? redactHeaders(incoming.headers) : undefined,
-      body: { ...p, ...(p.api_key ? { api_key: "[redacted]" } : {}) },
+      body: redactBody(p),
     },
     provider_calls: trace,
   });
@@ -247,7 +249,11 @@ export const Route = createFileRoute("/api/public/tts")({
       POST: async ({ request }) => {
         let body: Record<string, unknown> = {};
         try {
-          body = await request.json();
+          const raw: unknown = await request.json();
+          if (!isRequestObject(raw)) {
+            return Response.json({ error: "JSON body must be an object" }, { status: 400, headers: CORS });
+          }
+          body = raw;
         } catch {
           return Response.json({ error: "Invalid JSON body" }, { status: 400, headers: CORS });
         }
