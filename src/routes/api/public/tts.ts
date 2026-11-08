@@ -3,6 +3,7 @@ import { z } from "zod";
 import { synthesize, HttpError, bytesToB64 } from "@/lib/tts.server";
 import { runWithTrace, redactHeaders, redactUrl, type TraceEntry } from "@/lib/trace.server";
 import { isRequestObject, redactBody } from "@/lib/request-safety";
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 import { record, cacheGet, cacheSet } from "@/lib/monitor.server";
 import { resolveApiUser, UserAuthError } from "@/lib/user-account.server";
 
@@ -249,13 +250,13 @@ export const Route = createFileRoute("/api/public/tts")({
       POST: async ({ request }) => {
         let body: Record<string, unknown> = {};
         try {
-          const raw: unknown = await request.json();
+          const raw = await readJsonBody(request);
           if (!isRequestObject(raw)) {
             return Response.json({ error: "JSON body must be an object" }, { status: 400, headers: CORS });
           }
           body = raw;
-        } catch {
-          return Response.json({ error: "Invalid JSON body" }, { status: 400, headers: CORS });
+        } catch (error) {
+          return Response.json({ error: error instanceof RequestBodyError ? error.message : "Invalid JSON body" }, { status: error instanceof RequestBodyError ? error.status : 400, headers: CORS });
         }
         let userId: string | null = null;
         try {

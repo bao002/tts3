@@ -126,6 +126,10 @@ export const Route = createFileRoute("/account")({
         content:
           "Create an account, manage personal provider keys and API tokens, and view private usage.",
       },
+      { property: "og:title", content: "Account and API keys — Speak API" },
+      { property: "og:description", content: "Manage your Speak API account, provider keys and personal tokens." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Account,
