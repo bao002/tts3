@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { KeyService } from "@/lib/openrouter-pool.server";
+import { isRequestObject } from "@/lib/request-safety";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "*" };
 async function handle(request: Request) {
@@ -20,7 +21,14 @@ async function handle(request: Request) {
     let service: KeyService = (requestedService || url.searchParams.get('service') || 'openrouter') as KeyService;
     if (!pool.KEY_SERVICES.includes(service)) return Response.json({ error: 'Unsupported service' }, { status: 400, headers: CORS });
     if (request.method === 'POST') {
-      const body = await request.json() as { key?: unknown; reset?: unknown; service?: unknown };
+      let body: { service?: unknown; reset?: unknown; key?: unknown };
+      try {
+        const raw: unknown = await request.json();
+        if (!isRequestObject(raw)) return Response.json({ error: 'JSON body must be an object' }, { status: 400, headers: CORS });
+        body = raw;
+      } catch {
+        return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: CORS });
+      }
       if (body.service !== undefined) {
         if (typeof body.service !== 'string' || !pool.KEY_SERVICES.includes(body.service as KeyService)) return Response.json({ error: 'Unsupported service' }, { status: 400, headers: CORS });
         service = body.service as KeyService;

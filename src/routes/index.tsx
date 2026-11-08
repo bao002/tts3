@@ -8,6 +8,9 @@ import { providerVoices } from "@/lib/voices";
 import { detectLanguageCode } from "@/lib/language-detection";
 import { saveAudioHistory } from "@/lib/audio-history";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { geminiAudioBlob } from "@/lib/gemini-audio";
+import { isRequestObject } from "@/lib/request-safety";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -70,7 +73,8 @@ function Index() {
     setForm((current) => ({ ...current, [k]: e.target.value }));
   const setProvider = (e: { target: { value: string } }) => {
     setCustomVoice(false);
-    setForm((current) => ({ ...current, provider: e.target.value, voice: "" }));
+    setDirect((current) => current && isDirectProvider(e.target.value));
+    setForm((current) => ({ ...current, provider: e.target.value, voice: "", api_key: "", options: "" }));
   };
   const voiceOptions = providerVoices[form.provider] ?? [];
   const selectVoice = (e: { target: { value: string } }) => {
@@ -135,9 +139,11 @@ function Index() {
         form.options.trim()
       ) {
         try {
-          options = JSON.parse(form.options);
+          const parsed: unknown = JSON.parse(form.options);
+          if (!isRequestObject(parsed)) throw new Error("not an object");
+          options = parsed;
         } catch {
-          throw new Error("options is not valid JSON");
+          throw new Error("Provider options must be a JSON object");
         }
       }
       const body: Record<string, unknown> = quickRequest
@@ -167,7 +173,8 @@ function Index() {
             }),
           };
       const useDirect = direct && isDirectProvider(form.provider);
-      if (direct && !useDirect) throw new Error("Direct mode supports OpenAI, OpenRouter, ElevenLabs and Deepgram only");
+      if (direct && !useDirect) throw new Error("Choose OpenAI, OpenRouter, Gemini, ElevenLabs or Deepgram for direct mode");
+      if (useDirect && form.target_lang.trim()) throw new Error("Translation requires server mode; clear Translate to or turn off direct mode");
       if (useDirect && !form.api_key.trim())
         throw new Error("Direct mode needs your provider API key (Advanced settings)");
       let res: Response;
@@ -225,6 +232,15 @@ function Index() {
       let meta: { text?: string; lang?: string; provider?: string; usage?: { inputTokens?: number; outputTokens?: number } } = {};
       if ((res.headers.get("Content-Type") || "").includes("json")) {
         const json = (await res.json()) as Record<string, unknown>;
+        if (useDirect && form.provider === "gemini") {
+          log.push({ source: "client", title: `Response ← ${res.status}`, data: { ...responseInfo, body: "[Gemini response body omitted]" } });
+          if (!res.ok) {
+            const error = json["error"] as { message?: string } | undefined;
+            throw new Error(error?.message || `Gemini request failed (${res.status})`);
+          }
+          blob = geminiAudioBlob(json);
+          meta = { text: String(body["text"]), lang: String(body["lang"]), provider: "gemini" };
+        } else {
         const { server_log: serverLog, audio: b64, ...rest } = json;
         if (serverLog && typeof serverLog === "object") {
           const sl = serverLog as { received?: unknown; provider_calls?: Array<{ request?: { method?: string; url?: string } }> };
@@ -254,6 +270,7 @@ function Index() {
           type: typeof json["mime"] === "string" ? json["mime"] : "audio/mpeg",
         });
         meta = json as typeof meta;
+        }
       } else if (!res.ok) {
         const text = await res.text();
         log.push({ source: "client", title: `Response ← ${res.status}`, data: { ...responseInfo, body: text } });
@@ -364,7 +381,7 @@ function Index() {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button variant="outline"
             type="button"
             className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
@@ -372,8 +389,8 @@ function Index() {
           >
             <Play aria-hidden="true" size={14} />
             Speak French
-          </button>
-          <button
+          </Button>
+          <Button variant="outline"
             type="button"
             className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             disabled={busy}
@@ -381,7 +398,7 @@ function Index() {
           >
             <Play aria-hidden="true" size={14} />
             Speak Italian
-          </button>
+          </Button>
         </div>
         <label className="block text-xs text-muted-foreground">
           Text to speak
@@ -418,6 +435,12 @@ function Index() {
             ))}
           </datalist>
         </div>
+        {direct && isDirectProvider(form.provider) && (
+          <label className="block text-xs text-muted-foreground">
+            Provider API key
+            <input aria-label="Provider API key" className={`${field} mt-1`} type="password" autoComplete="off" value={form.api_key} onChange={set("api_key")} />
+          </label>
+        )}
         <details className="rounded-lg border border-border px-3 py-3">
           <summary className="cursor-pointer text-sm font-medium">Advanced settings</summary>
           <div className="mt-3 space-y-3">
@@ -468,7 +491,7 @@ function Index() {
             )}
             {form.provider === "openrouter" && (
               <>
-                <label className="block text-xs text-muted-foreground">
+                {!direct && <label className="block text-xs text-muted-foreground">
                   API key (optional; overrides configured keys for this request)
                   <input
                     className={`${field} mt-1`}
@@ -478,7 +501,7 @@ function Index() {
                     value={form.api_key}
                     onChange={set("api_key")}
                   />
-                </label>
+                </label>}
                 <label className="block text-xs text-muted-foreground">
                   OpenRouter model
                   <select
@@ -501,7 +524,7 @@ function Index() {
             )}
             {form.provider !== "google" &&
               form.provider !== "auto" &&
-              form.provider !== "openrouter" && (
+              form.provider !== "openrouter" && !direct && (
                 <label className="block text-xs text-muted-foreground">
                   API key (optional; overrides configured keys for this request)
                   <input
@@ -545,6 +568,7 @@ function Index() {
             type="checkbox"
             className="mt-1 accent-foreground"
             checked={direct}
+            disabled={!isDirectProvider(form.provider)}
             onChange={(e) => setDirect(e.target.checked)}
           />
           <span>
@@ -552,19 +576,19 @@ function Index() {
             <span className="block text-xs text-muted-foreground">
               {direct
                 ? isDirectProvider(form.provider)
-                  ? "Skips this server. Uses the API key from Advanced settings."
-                  : "Pick OpenAI, OpenRouter, ElevenLabs or Deepgram to use direct mode."
+                  ? "Uses the provider API key above."
+                  : "Pick OpenAI, OpenRouter, Gemini, ElevenLabs or Deepgram."
                 : "Off: the request goes through this server, and the server log is shown below."}
             </span>
           </span>
         </label>
-        <button
+        <Button
           onClick={() => void run()}
           disabled={busy}
           className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {busy ? "Generating…" : "Generate audio"}
-        </button>
+        </Button>
         {info && (
           <div role="alert" className="break-all text-sm text-destructive">
             <p>{info}</p>
@@ -578,13 +602,9 @@ function Index() {
                 Open Account to test your saved key
               </Link>
             )}
-            {historyWarning && (
-              <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
-                {historyWarning}
-              </p>
-            )}
           </div>
         )}
+        {historyWarning && <p role="status" className="text-sm text-muted-foreground">{historyWarning}</p>}
         {audio && <audio className="w-full" controls src={audio} />}
         {logs.length > 0 && <RequestLog logs={logs} />}
       </section>
@@ -611,14 +631,14 @@ function RequestLog({ logs }: { logs: LogEntry[] }) {
         <h2 className="text-sm font-semibold">Request log</h2>
         <div className="flex gap-1 text-xs">
           {(["all", "client", "server"] as const).map((f) => (
-            <button
+            <Button variant={filter === f ? "default" : "outline"} size="sm"
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={`rounded-md border border-border px-2 py-1 capitalize ${filter === f ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
             >
               {f}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
