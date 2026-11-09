@@ -11,3 +11,4 @@
 
 - Use shared browser-safe request-safety helpers for credential redaction and JSON-object checks so client and server logs apply the same safeguards.
 - Decode Gemini direct-response PCM to a WAV Blob in the browser-safe audio helper; the provider returns JSON rather than a playable audio response.
+- Treat an explicit TTS providers list as ordered fallback, with provider-scoped options overriding common options; this keeps requests within the caller's chosen services.

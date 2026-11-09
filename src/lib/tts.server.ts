@@ -8,6 +8,8 @@ export type TtsInput = {
   lang: string;
   targetLang?: string | undefined;
   provider: Provider;
+  providers?: Exclude<Provider, "auto">[] | undefined;
+  providerOptions?: Partial<Record<Exclude<Provider, "auto">, Record<string, unknown>>> | undefined;
   apiKey?: string | undefined;
   userId?: string | undefined;
   voice?: string | undefined;
@@ -928,7 +930,26 @@ async function synthesizeAuto(input: TtsInput): Promise<TtsResult> {
 
 // ---------------- Entry ----------------
 export async function synthesize(input: TtsInput): Promise<TtsResult> {
+  if (input.providers?.length) {
+    let lastError: unknown;
+    for (const provider of input.providers) {
+      try {
+        return await synthesize({
+          ...input,
+          provider,
+          providers: undefined,
+          options: { ...input.options, ...input.providerOptions?.[provider] },
+          providerOptions: undefined,
+          voice: resolveVoice(provider, input, true),
+          voices: undefined,
+        });
+      } catch (error) { lastError = error; }
+    }
+    if (lastError) throw lastError;
+    throw new HttpError(400, "No requested provider is available.");
+  }
   if (input.provider === "auto") return synthesizeAuto(input);
+  if (input.providerOptions) input = { ...input, options: { ...input.options, ...input.providerOptions[input.provider] } };
   if (input.voices) input = { ...input, voice: resolveVoice(input.provider, input, false), voices: undefined };
   let { text } = input;
   let usage: ProviderUsage | undefined;
