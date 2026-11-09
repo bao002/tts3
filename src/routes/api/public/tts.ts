@@ -141,7 +141,7 @@ async function handle(
     provider_calls: trace,
   });
   try {
-    let r = p.debug || p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
+    let r = p.debug || p.providers || p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
     const cached = !!r;
     if (!r) {
       const input = {
@@ -159,7 +159,7 @@ async function handle(
         options: p.options,
       };
       r = p.debug ? await runWithTrace(trace, () => synthesize(input)) : await synthesize(input);
-      if (p.provider !== "auto" && !userId && !p.api_key) cacheSet(key, r);
+      if (!p.providers && p.provider !== "auto" && !userId && !p.api_key) cacheSet(key, r);
     }
     const responseTimeMs = Date.now() - t0;
     await record({
