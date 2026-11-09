@@ -5,6 +5,6 @@
 - [x] Verify regression tests and the speech flow in the browser (real Google audio; Gemini response simulated without a provider key).
 
 # Request customization
-- [ ] Add ordered provider choices and per-provider settings.
-- [ ] Expand debug metadata and document anonymous Google requests.
-- [ ] Verify endpoint rules and browser requests.
+- [x] Add ordered provider choices and per-provider settings.
+- [x] Expand debug metadata and document anonymous Google requests.
+- [x] Verify endpoint rules and browser requests (35 tests; real anonymous Google GET and POST).
