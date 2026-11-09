@@ -6,7 +6,8 @@ vi.mock("@/lib/tts.server", () => ({ synthesize: mocks.synthesize, HttpError: cl
 vi.mock("@/lib/user-account.server", () => ({ resolveApiUser: mocks.resolveApiUser, UserAuthError: class extends Error {} }));
 vi.mock("@/lib/monitor.server", () => ({ record: mocks.record, cacheGet: () => undefined, cacheSet: vi.fn() }));
 import { Route } from "@/routes/api/public/tts";
-const handlers = (Route as unknown as { server: { handlers: Record<string, (context: { request: Request }) => Promise<Response>> } }).server.handlers;
+type Handler = (context: { request: Request }) => Promise<Response>;
+const handlers = (Route as unknown as { server: { handlers: { POST: Handler; GET: Handler } } }).server.handlers;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -22,7 +23,7 @@ describe("custom TTS requests", () => {
   it("allows Google without Authorization", async () => {
     const response = await post({ text: "Hello", lang: "en", provider: "google" });
     expect(response.status).toBe(200);
-    expect(mocks.resolveApiUser.mock.calls[0][0].headers.has("Authorization")).toBe(false);
+    expect(mocks.resolveApiUser.mock.calls[0]?.[0]?.headers.has("Authorization")).toBe(false);
     expect(mocks.synthesize).toHaveBeenCalledWith(expect.objectContaining({ provider: "google", userId: undefined }));
   });
   it("accepts debug=on in the POST query and reports the actual provider and audio details", async () => {
