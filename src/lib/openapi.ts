@@ -61,6 +61,27 @@ const params = {
     description:
       "API key for the selected keyed provider. This per-request key takes precedence over saved and server-configured keys and is not stored. Omit to use configured keys. Requires an explicit keyed provider (not auto or google). Personal API tokens must omit this field and use account-owned keys. Prefer POST or the X-Provider-API-Key header to avoid URL logging.",
   },
+  providers: {
+    type: "array",
+    minItems: 1,
+    maxItems: 7,
+    uniqueItems: true,
+    items: { type: "string", enum: audioProviders },
+    description: "Optional ordered fallback list. Overrides provider; tries only these services in the supplied order until one succeeds. Google needs no authentication. Cannot combine with api_key or X-Provider-API-Key. GET accepts JSON or comma-separated names.",
+    example: ["gemini", "openai", "google"],
+  },
+  provider_options: {
+    type: "object",
+    additionalProperties: false,
+    properties: Object.fromEntries(audioProviders.map((p) => [p, { type: "object", additionalProperties: true }])),
+    description: "Settings by provider, overriding common options for that service. Also applies to Auto. GET accepts URL-encoded JSON.",
+    example: { gemini: { model: "gemini-2.5-flash-preview-tts" }, openai: { instructions: "Speak calmly." } },
+  },
+  debug: {
+    oneOf: [{ type: "boolean" }, { type: "string", enum: ["true", "false", "1", "0", "on", "off"] }],
+    default: false,
+    description: "true, 1, or on returns JSON even with format=binary: actual provider, timing, cache status, audio bytes, language, usage when available, and redacted server_log. POST also accepts ?debug=on (overrides body). Never returns provider keys.",
+  },
   voice: {
     type: "string",
     maxLength: 50,
@@ -124,7 +145,7 @@ const params = {
 } as const;
 
 const audioSuccessResponse = {
-  description: "Encoded audio, or a JSON object when format=json. Auto selects a keyed provider without recent auth/quota failures; Google is not included because it does not use API keys.",
+  description: "Encoded audio, or JSON when format=json or debug is enabled. Auto selects a keyed provider; an explicit providers list tries only its ordered choices, including anonymous Google when specified.",
   headers: {
     "X-Response-Time-Ms": {
       schema: { type: "integer" },
@@ -159,6 +180,18 @@ const audioSuccessResponse = {
           text: { type: "string" },
           lang: { type: "string" },
           provider: { type: "string" },
+          debug: { type: "object", properties: {
+            requested_provider: { type: "string" },
+            requested_providers: { type: "array", items: { type: "string" } },
+            provider: { type: "string", enum: audioProviders },
+            response_time_ms: { type: "integer" },
+            cached: { type: "boolean" },
+            audio_bytes: { type: "integer" },
+            mime: { type: "string" },
+            lang: { type: "string" },
+            usage: { type: "object", additionalProperties: true },
+          } },
+          server_log: { type: "object", description: "Debug-only received request and outgoing provider HTTP calls, with credentials redacted.", additionalProperties: true },
           usage: {
             type: "object",
             properties: { inputTokens: { type: "integer" }, outputTokens: { type: "integer" } },
@@ -210,6 +243,7 @@ export const openApiSpec = {
       get: {
         operationId: "synthesizeSpeechFromQuery",
         summary: "Synthesize speech (query params)",
+        description: "Google works anonymously: omit Authorization. Optional credentials use account-owned keys; invalid supplied tokens are rejected. Customize provider, providers, voices, options and provider_options.",
         security: [{ personalApiTokenAuth: [] }, {}],
         parameters: [
           ...Object.entries(params).map(([name, schema]) => ({
@@ -217,11 +251,11 @@ export const openApiSpec = {
             in: "query",
             required: name === "text" || name === "lang",
             schema:
-              name === "options" || name === "voices"
+              name === "options" || name === "voices" || name === "provider_options" || name === "providers"
                 ? {
                     type: "string",
                     maxLength: 2000,
-                    description: `URL-encoded JSON object (${name}).`,
+                    description: name === "providers" ? "Ordered provider list as JSON or comma-separated names." : `URL-encoded JSON object (${name}).`,
                   }
                 : schema,
           })),
@@ -252,6 +286,7 @@ export const openApiSpec = {
       post: {
         operationId: "synthesizeSpeech",
         summary: "Synthesize speech (JSON body)",
+        description: "Google works anonymously: omit Authorization. Customize provider, providers, voices, options and provider_options. Invalid supplied tokens are rejected rather than silently ignored.",
         security: [{ personalApiTokenAuth: [] }, {}],
         parameters: [
           {

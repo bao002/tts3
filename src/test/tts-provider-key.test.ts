@@ -76,6 +76,23 @@ afterEach(() => {
 });
 
 describe("provider API key errors", () => {
+  it("tries explicit providers in order, uses scoped settings, and never calls an unlisted service", async () => {
+    poolState.supabaseConfigured = false;
+    vi.stubEnv("OPENAI_API_KEY", "test-openai");
+    vi.stubEnv("DEEPGRAM_API_KEY", "test-deepgram");
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (String(url).includes("api.openai.com")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ voice: "nova", instructions: "Speak calmly." });
+        return Response.json({ error: "unavailable" }, { status: 503 });
+      }
+      expect(String(url)).toContain("translate.google");
+      return new Response(new Uint8Array([1]), { headers: { "Content-Type": "audio/mpeg" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await synthesize({ text: "Hello", lang: "en", provider: "auto", providers: ["openai", "google"], voices: { openai: "nova" }, options: { instructions: "Common" }, providerOptions: { openai: { instructions: "Speak calmly." } } });
+    expect(result.provider).toBe("google");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it("uses a temporary token's own provider keys and retries quota failures", async () => {
     const created = await createMemoryAccessToken({ openai: ["temporary-key-a", "temporary-key-b"] });
     const authorizationHeaders: string[] = [];
