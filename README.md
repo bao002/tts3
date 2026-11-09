@@ -48,10 +48,14 @@ Request body fields:
 | `text` | yes | Text to speak, 1–5000 characters. |
 | `lang` | yes | Source language code, e.g. `en`, `es-419`, `pt-BR`. |
 | `provider` | no | `auto`, `google`, `lovable`, `openrouter`, `gemini`, `openai`, `elevenlabs`, or `deepgram`. |
+| `providers` | no | Ordered fallback list, e.g. `["gemini","openai","google"]`; overrides `provider`, never uses unlisted services. GET accepts JSON or comma-separated names. Cannot combine with a per-request key. |
 | `target_lang` | no | Translate the text into this language before speaking. |
 | `voice` | no | Provider-specific voice name or ID. |
+| `voices` | no | Per-provider voice map, e.g. `{"gemini":"Kore","openai":"coral"}`. |
 | `speed` | no | Speech rate multiplier, 0.25–4 (default 1). |
 | `options` | no | Provider-specific settings (model, encoding, etc.). |
+| `provider_options` | no | Settings by provider, overriding common `options`, e.g. `{"openai":{"instructions":"Speak calmly."}}`. |
+| `debug` | no | `true`, `1`, or `on` returns JSON with provider name, timing, cache status, audio size, language, usage and redacted request traces. POST also accepts `?debug=on`. |
 | `format` | no | `binary` (raw audio, default) or `json` (base64 audio). |
 | `api_key` | no | Per-request provider key; takes precedence over saved keys and is never stored. |
 
@@ -62,6 +66,28 @@ The response is the audio file. Useful response headers:
 - `X-Provider-Input-Tokens` / `X-Provider-Output-Tokens` — provider-reported usage, when available.
 
 ### Authentication
+
+**Google is anonymous:** omit the Authorization header; no account, token or
+provider API key is required. A supplied invalid token is still rejected.
+
+```sh
+curl 'https://tts3.lovable.app/api/public/tts?debug=on' \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Hello","lang":"en","provider":"google"}'
+```
+
+For ordered fallback with account-owned keys, send your token and customize:
+
+```json
+{
+  "text": "Hello",
+  "lang": "en",
+  "providers": ["gemini", "openai", "google"],
+  "voices": {"gemini": "Kore", "openai": "coral"},
+  "provider_options": {"openai": {"instructions": "Speak calmly."}},
+  "debug": "on"
+}
+```
 
 Most endpoints work anonymously with per-request keys. For saved keys and
 usage history, create a personal API token on the **Tokens** page and send it

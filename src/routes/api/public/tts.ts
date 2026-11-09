@@ -44,6 +44,14 @@ const schema = z.object({
   provider: z
     .enum(["auto", "google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"])
     .default("google"),
+  providers: z.preprocess((v) => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v.split(",").map((s) => s.trim()); }
+  }, z.array(z.enum(["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"])).min(1).max(7).refine((v) => new Set(v).size === v.length, "providers must be unique").optional()),
+  provider_options: optionsSchema.pipe(z.record(
+    z.enum(["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"]),
+    z.record(z.string(), z.unknown()),
+  ).optional()),
   api_key: z.string().max(500).optional().or(z.literal("")),
   voice: z.string().max(50).optional().or(z.literal("")),
   voices: optionsSchema.pipe(
@@ -58,9 +66,9 @@ const schema = z.object({
   options: optionsSchema,
   format: z.enum(["binary", "json"]).default("binary"),
   debug: z
-    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .union([z.boolean(), z.enum(["true", "false", "1", "0", "on", "off"])])
     .optional()
-    .transform((v) => v === true || v === "true" || v === "1"),
+    .transform((v) => v === true || v === "true" || v === "1" || v === "on"),
 });
 
 async function handle(
@@ -89,7 +97,7 @@ async function handle(
     return Response.json({ error: parsed.error.flatten() }, { status: 400, headers: CORS });
   }
   const p = parsed.data;
-  if (p.api_key && (p.provider === "auto" || p.provider === "google")) {
+  if (p.api_key && (p.providers || p.provider === "auto" || p.provider === "google")) {
     return Response.json(
       {
         error:
@@ -112,6 +120,8 @@ async function handle(
   };
   const key = JSON.stringify([
     p.provider,
+    p.providers ?? null,
+    p.provider_options ?? null,
     p.lang,
     p.target_lang || "",
     p.voice || "",
@@ -131,7 +141,7 @@ async function handle(
     provider_calls: trace,
   });
   try {
-    let r = p.debug || p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
+    let r = p.debug || p.providers || p.provider === "auto" || userId || p.api_key ? undefined : cacheGet(key);
     const cached = !!r;
     if (!r) {
       const input = {
@@ -139,6 +149,8 @@ async function handle(
         lang: p.lang,
         targetLang: p.target_lang || undefined,
         provider: p.provider,
+        providers: p.providers,
+        providerOptions: p.provider_options,
         userId,
         apiKey: p.api_key || undefined,
         voice: p.voice || undefined,
@@ -147,7 +159,7 @@ async function handle(
         options: p.options,
       };
       r = p.debug ? await runWithTrace(trace, () => synthesize(input)) : await synthesize(input);
-      if (p.provider !== "auto" && !userId && !p.api_key) cacheSet(key, r);
+      if (!p.providers && p.provider !== "auto" && !userId && !p.api_key) cacheSet(key, r);
     }
     const responseTimeMs = Date.now() - t0;
     await record({
@@ -185,6 +197,17 @@ async function handle(
           lang: r.lang,
           provider: r.provider,
           usage: r.usage,
+          ...(p.debug ? { debug: {
+            requested_provider: p.provider,
+            requested_providers: p.providers ?? [p.provider],
+            provider: r.provider,
+            response_time_ms: responseTimeMs,
+            cached,
+            audio_bytes: r.audio.length,
+            mime: r.mime,
+            lang: r.lang,
+            usage: r.usage,
+          } } : {}),
           ...(p.debug ? { server_log: serverLog() } : {}),
         },
         { headers: { ...CORS, ...extra } },
@@ -215,7 +238,7 @@ async function handle(
       estimatedInputTokens: Math.ceil(p.text.length / 4),
     });
     return Response.json(
-      { error: msg, ...(p.debug ? { server_log: serverLog() } : {}) },
+      { error: msg, ...(p.debug ? { debug: { requested_provider: p.provider, requested_providers: p.providers ?? [p.provider], response_time_ms: Date.now() - t0, status }, server_log: serverLog() } : {}) },
       { status, headers: CORS },
     );
   }
@@ -272,7 +295,7 @@ export const Route = createFileRoute("/api/public/tts")({
           );
         }
         return handle(
-          body,
+          { ...body, ...(new URL(request.url).searchParams.has("debug") ? { debug: new URL(request.url).searchParams.get("debug") } : {}) },
           "POST",
           userId ?? undefined,
           request.headers.get("X-Provider-API-Key") ?? undefined,

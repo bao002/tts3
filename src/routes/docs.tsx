@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { openApiSpec } from "@/lib/openapi";
+import { Button } from "@/components/ui/button";
 
 type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 type OpenApiOperation = {
@@ -99,7 +100,7 @@ function TryIt({
   operation: OpenApiOperation;
   token: string;
 }) {
-  const params = (operation.parameters ?? []).filter((p) => p.in === "path" || p.in === "query");
+  const params = (operation.parameters ?? []).filter((p) => p.in === "path" || p.in === "query" || p.in === "header");
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const p of params) {
@@ -109,7 +110,8 @@ function TryIt({
     }
     return init;
   });
-  const [body, setBody] = useState(() => sampleBody(operation.requestBody));
+  const [body, setBody] = useState(() => path === "/api/public/tts" && method === "post" ? pretty({ text: "Hello", lang: "en", provider: "google", debug: "on" }) : sampleBody(operation.requestBody));
+  const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TryResult | null>(null);
 
@@ -127,15 +129,16 @@ function TryIt({
     try {
       let url = path;
       const query = new URLSearchParams();
+      const headers = new Headers();
       for (const p of params) {
         const v = values[p.name] ?? "";
         if (p.in === "path") url = url.replace(`{${p.name}}`, encodeURIComponent(v));
+        else if (p.in === "header" && v !== "") headers.set(p.name, v);
         else if (v !== "") query.set(p.name, v);
       }
       const qs = query.toString();
       if (qs) url += `?${qs}`;
-      const headers = new Headers();
-      if (token.trim()) headers.set("Authorization", `Bearer ${token.trim()}`);
+      if (!anonymous && token.trim()) headers.set("Authorization", `Bearer ${token.trim()}`);
       const init: RequestInit = { method: method.toUpperCase(), headers };
       if (operation.requestBody !== undefined && method !== "get" && body.trim()) {
         headers.set("Content-Type", "application/json");
@@ -175,6 +178,10 @@ function TryIt({
     <details className="mt-4 border-t border-border pt-3">
       <summary className="cursor-pointer text-sm font-semibold">Try it out</summary>
       <form className="mt-3 space-y-3" onSubmit={(event) => void send(event)}>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} />
+          Anonymous request
+        </label>
         {params.map((p) => (
           <label key={`${p.in}-${p.name}`} className="block text-xs text-muted-foreground">
             {p.name} ({p.in}
@@ -183,6 +190,8 @@ function TryIt({
               className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
               value={values[p.name] ?? ""}
               required={p.required}
+              type={p.in === "header" ? "password" : "text"}
+              autoComplete="off"
               onChange={(event) => setValues({ ...values, [p.name]: event.target.value })}
             />
           </label>
@@ -198,13 +207,12 @@ function TryIt({
             />
           </label>
         )}
-        <button
+        <Button
           type="submit"
-          className="bg-foreground px-4 py-2 text-sm text-background disabled:opacity-50"
           disabled={busy}
         >
           {busy ? "Sending…" : `Send ${method.toUpperCase()}`}
-        </button>
+        </Button>
       </form>
       {result && (
         <div role="status" className="mt-3 text-sm">
