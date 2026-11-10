@@ -47,6 +47,10 @@ export const schema = z.object({
     if (typeof v !== "string") return v;
     try { return JSON.parse(v); } catch { return v.split(",").map((s) => s.trim()); }
   }, z.array(z.enum(["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"])).min(1).max(7).refine((v) => new Set(v).size === v.length, "providers must be unique").optional()),
+  exclude: z.preprocess((v) => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v.split(",").map((s) => s.trim()); }
+  }, z.array(z.enum(["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"])).min(1).max(7).refine((v) => new Set(v).size === v.length, "providers must be unique").optional()),
   provider_options: optionsSchema.pipe(z.record(
     z.enum(["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"]),
     z.record(z.string(), z.unknown()),
@@ -76,6 +80,19 @@ export async function handle(
   userId?: string,
   headerApiKey?: string,
   incoming?: { url: string; headers: Headers },
+  mode: ApiMode = "tts",
+) {
+  const pre = mode === "tts" ? raw : { text: "Test", lang: "en", ...raw, ...(mode === "auto" ? { provider: "auto" } : {}) };
+  return handleInner(pre, method, userId, headerApiKey, incoming, mode);
+}
+
+async function handleInner(
+  raw: Record<string, unknown>,
+  method: string,
+  userId?: string,
+  headerApiKey?: string,
+  incoming?: { url: string; headers: Headers },
+  mode: ApiMode = "tts",
 ) {
   const request = headerApiKey?.trim() ? { ...raw, api_key: headerApiKey.trim() } : raw;
   const t0 = Date.now();
@@ -96,6 +113,16 @@ export async function handle(
     return Response.json({ error: parsed.error.flatten() }, { status: 400, headers: CORS });
   }
   const p = parsed.data;
+  if (p.exclude) {
+    const remaining = (p.providers ?? ALL_PROVIDERS).filter((x) => !p.exclude!.includes(x));
+    if (!remaining.length)
+      return Response.json({ error: "exclude removes every provider; nothing left to try." }, { status: 400, headers: CORS });
+    p.providers = remaining;
+  }
+  if (mode === "validate" || (mode === "auto" && p.debug)) {
+    if (p.api_key) return Response.json({ error: "Validation uses saved/configured keys; omit api_key." }, { status: 400, headers: CORS });
+    return Response.json(await validateProviders(p, userId), { headers: CORS });
+  }
   if (p.api_key && (p.providers || p.provider === "auto" || p.provider === "google")) {
     return Response.json(
       {
@@ -243,3 +270,63 @@ export async function handle(
   }
 }
 
+
+export type ApiMode = "tts" | "auto" | "validate";
+export const ALL_PROVIDERS = ["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"] as const;
+
+export async function validateProviders(p: z.infer<typeof schema>, userId?: string) {
+  const list = p.providers ?? [...ALL_PROVIDERS];
+  const results = await Promise.all(
+    list.map(async (provider) => {
+      const t = Date.now();
+      try {
+        const r = await synthesize({
+          text: p.text, lang: p.lang, targetLang: p.target_lang || undefined, provider,
+          providerOptions: p.provider_options, userId, voice: p.voice || undefined, voices: p.voices,
+          speed: p.speed, options: p.options,
+        });
+        return { provider, ok: true, response_time_ms: Date.now() - t, audio_bytes: r.audio.length, mime: r.mime };
+      } catch (e) {
+        return { provider, ok: false, response_time_ms: Date.now() - t, status: e instanceof HttpError ? e.status : 500, error: (e instanceof Error ? e.message : "Unknown error").slice(0, 300) };
+      }
+    }),
+  );
+  return {
+    checked: list,
+    working: results.filter((r) => r.ok).map((r) => r.provider),
+    failed: results.filter((r) => !r.ok).map((r) => r.provider),
+    results,
+  };
+}
+
+async function authError(request: Request) {
+  try { return { userId: (await resolveApiUser(request)) ?? undefined }; } catch (error) {
+    const status = error instanceof UserAuthError ? error.status : 503;
+    return { res: Response.json({ error: status === 401 ? "Invalid personal API token" : "Could not authenticate request" }, { status, headers: CORS }) };
+  }
+}
+
+export function ttsHandlers(mode: ApiMode) {
+  return {
+    OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
+    GET: async ({ request }: { request: Request }) => {
+      const a = await authError(request);
+      if (a.res) return a.res;
+      return handle(Object.fromEntries(new URL(request.url).searchParams), "GET", a.userId, request.headers.get("X-Provider-API-Key") ?? undefined, request, mode);
+    },
+    POST: async ({ request }: { request: Request }) => {
+      let body: Record<string, unknown> = {};
+      try {
+        const raw = await readJsonBody(request);
+        if (!isRequestObject(raw)) return Response.json({ error: "JSON body must be an object" }, { status: 400, headers: CORS });
+        body = raw;
+      } catch (error) {
+        return Response.json({ error: error instanceof RequestBodyError ? error.message : "Invalid JSON body" }, { status: error instanceof RequestBodyError ? error.status : 400, headers: CORS });
+      }
+      const a = await authError(request);
+      if (a.res) return a.res;
+      const q = new URL(request.url).searchParams;
+      return handle({ ...body, ...(q.has("debug") ? { debug: q.get("debug") } : {}) }, "POST", a.userId, request.headers.get("X-Provider-API-Key") ?? undefined, request, mode);
+    },
+  };
+}
