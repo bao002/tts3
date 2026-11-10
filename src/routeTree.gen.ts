@@ -18,12 +18,16 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as OpenrouterRouteImport } from './routes/openrouter'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as TokensRouteImport } from './routes/tokens'
+import { Route as ApiAutoRouteImport } from './routes/api/auto'
+import { Route as ApiValidateRouteImport } from './routes/api/validate'
 import { Route as ApiPublicAccessTokenRouteImport } from './routes/api/public/access-token'
+import { Route as ApiPublicAutoRouteImport } from './routes/api/public/auto'
 import { Route as ApiPublicInfoRouteImport } from './routes/api/public/info'
 import { Route as ApiPublicOpenapiDotjsonRouteImport } from './routes/api/public/openapi[.]json'
 import { Route as ApiPublicOpenrouterKeysRouteImport } from './routes/api/public/openrouter-keys'
 import { Route as ApiPublicTtsRouteImport } from './routes/api/public/tts'
 import { Route as ApiPublicUsageRouteImport } from './routes/api/public/usage'
+import { Route as ApiPublicValidateRouteImport } from './routes/api/public/validate'
 import { Route as ApiReportUsageRouteImport } from './routes/api/report/usage'
 import { Route as ApiUserProviderKeysRouteImport } from './routes/api/user/provider-keys'
 import { Route as ApiUserTokenRouteImport } from './routes/api/user/token'
@@ -73,9 +77,24 @@ const TokensRoute = TokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAutoRoute = ApiAutoRouteImport.update({
+  id: '/api/auto',
+  path: '/api/auto',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiValidateRoute = ApiValidateRouteImport.update({
+  id: '/api/validate',
+  path: '/api/validate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicAccessTokenRoute = ApiPublicAccessTokenRouteImport.update({
   id: '/api/public/access-token',
   path: '/api/public/access-token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicAutoRoute = ApiPublicAutoRouteImport.update({
+  id: '/api/public/auto',
+  path: '/api/public/auto',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicInfoRoute = ApiPublicInfoRouteImport.update({
@@ -101,6 +120,11 @@ const ApiPublicTtsRoute = ApiPublicTtsRouteImport.update({
 const ApiPublicUsageRoute = ApiPublicUsageRouteImport.update({
   id: '/api/public/usage',
   path: '/api/public/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicValidateRoute = ApiPublicValidateRouteImport.update({
+  id: '/api/public/validate',
+  path: '/api/public/validate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiReportUsageRoute = ApiReportUsageRouteImport.update({
@@ -129,12 +153,16 @@ export interface FileRoutesByFullPath {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
+  '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
   '/api/public/openapi.json': typeof ApiPublicOpenapiDotjsonRoute
   '/api/public/openrouter-keys': typeof ApiPublicOpenrouterKeysRoute
   '/api/public/tts': typeof ApiPublicTtsRoute
   '/api/public/usage': typeof ApiPublicUsageRoute
+  '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
@@ -149,12 +177,16 @@ export interface FileRoutesByTo {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
+  '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
   '/api/public/openapi.json': typeof ApiPublicOpenapiDotjsonRoute
   '/api/public/openrouter-keys': typeof ApiPublicOpenrouterKeysRoute
   '/api/public/tts': typeof ApiPublicTtsRoute
   '/api/public/usage': typeof ApiPublicUsageRoute
+  '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
@@ -170,12 +202,16 @@ export interface FileRoutesById {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
+  '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
   '/api/public/openapi.json': typeof ApiPublicOpenapiDotjsonRoute
   '/api/public/openrouter-keys': typeof ApiPublicOpenrouterKeysRoute
   '/api/public/tts': typeof ApiPublicTtsRoute
   '/api/public/usage': typeof ApiPublicUsageRoute
+  '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
@@ -192,12 +228,16 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
+    | '/api/public/auto'
     | '/api/public/info'
     | '/api/public/openapi.json'
     | '/api/public/openrouter-keys'
     | '/api/public/tts'
     | '/api/public/usage'
+    | '/api/public/validate'
     | '/api/report/usage'
     | '/api/user/provider-keys'
     | '/api/user/token'
@@ -212,12 +252,16 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
+    | '/api/public/auto'
     | '/api/public/info'
     | '/api/public/openapi.json'
     | '/api/public/openrouter-keys'
     | '/api/public/tts'
     | '/api/public/usage'
+    | '/api/public/validate'
     | '/api/report/usage'
     | '/api/user/provider-keys'
     | '/api/user/token'
@@ -232,12 +276,16 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
+    | '/api/public/auto'
     | '/api/public/info'
     | '/api/public/openapi.json'
     | '/api/public/openrouter-keys'
     | '/api/public/tts'
     | '/api/public/usage'
+    | '/api/public/validate'
     | '/api/report/usage'
     | '/api/user/provider-keys'
     | '/api/user/token'
@@ -253,12 +301,16 @@ export interface RootRouteChildren {
   OpenrouterRoute: typeof OpenrouterRoute
   ReportsRoute: typeof ReportsRoute
   TokensRoute: typeof TokensRoute
+  ApiAutoRoute: typeof ApiAutoRoute
+  ApiValidateRoute: typeof ApiValidateRoute
   ApiPublicAccessTokenRoute: typeof ApiPublicAccessTokenRoute
+  ApiPublicAutoRoute: typeof ApiPublicAutoRoute
   ApiPublicInfoRoute: typeof ApiPublicInfoRoute
   ApiPublicOpenapiDotjsonRoute: typeof ApiPublicOpenapiDotjsonRoute
   ApiPublicOpenrouterKeysRoute: typeof ApiPublicOpenrouterKeysRoute
   ApiPublicTtsRoute: typeof ApiPublicTtsRoute
   ApiPublicUsageRoute: typeof ApiPublicUsageRoute
+  ApiPublicValidateRoute: typeof ApiPublicValidateRoute
   ApiReportUsageRoute: typeof ApiReportUsageRoute
   ApiUserProviderKeysRoute: typeof ApiUserProviderKeysRoute
   ApiUserTokenRoute: typeof ApiUserTokenRoute
@@ -329,11 +381,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TokensRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auto': {
+      id: '/api/auto'
+      path: '/api/auto'
+      fullPath: '/api/auto'
+      preLoaderRoute: typeof ApiAutoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/validate': {
+      id: '/api/validate'
+      path: '/api/validate'
+      fullPath: '/api/validate'
+      preLoaderRoute: typeof ApiValidateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/access-token': {
       id: '/api/public/access-token'
       path: '/api/public/access-token'
       fullPath: '/api/public/access-token'
       preLoaderRoute: typeof ApiPublicAccessTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/auto': {
+      id: '/api/public/auto'
+      path: '/api/public/auto'
+      fullPath: '/api/public/auto'
+      preLoaderRoute: typeof ApiPublicAutoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/info': {
@@ -371,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicUsageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/validate': {
+      id: '/api/public/validate'
+      path: '/api/public/validate'
+      fullPath: '/api/public/validate'
+      preLoaderRoute: typeof ApiPublicValidateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/report/usage': {
       id: '/api/report/usage'
       path: '/api/report/usage'
@@ -405,12 +485,16 @@ const rootRouteChildren: RootRouteChildren = {
   OpenrouterRoute: OpenrouterRoute,
   ReportsRoute: ReportsRoute,
   TokensRoute: TokensRoute,
+  ApiAutoRoute: ApiAutoRoute,
+  ApiValidateRoute: ApiValidateRoute,
   ApiPublicAccessTokenRoute: ApiPublicAccessTokenRoute,
+  ApiPublicAutoRoute: ApiPublicAutoRoute,
   ApiPublicInfoRoute: ApiPublicInfoRoute,
   ApiPublicOpenapiDotjsonRoute: ApiPublicOpenapiDotjsonRoute,
   ApiPublicOpenrouterKeysRoute: ApiPublicOpenrouterKeysRoute,
   ApiPublicTtsRoute: ApiPublicTtsRoute,
   ApiPublicUsageRoute: ApiPublicUsageRoute,
+  ApiPublicValidateRoute: ApiPublicValidateRoute,
   ApiReportUsageRoute: ApiReportUsageRoute,
   ApiUserProviderKeysRoute: ApiUserProviderKeysRoute,
   ApiUserTokenRoute: ApiUserTokenRoute,

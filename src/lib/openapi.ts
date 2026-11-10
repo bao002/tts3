@@ -70,6 +70,15 @@ const params = {
     description: "Optional ordered fallback list. Overrides provider; tries only these services in the supplied order until one succeeds. Google needs no authentication. Cannot combine with api_key or X-Provider-API-Key. GET accepts JSON or comma-separated names.",
     example: ["gemini", "openai", "google"],
   },
+  exclude: {
+    type: "array",
+    minItems: 1,
+    maxItems: 7,
+    uniqueItems: true,
+    items: { type: "string", enum: audioProviders },
+    description: "Optional blacklist. Removes these providers from `providers` (or from all providers when `providers` is omitted); the rest are tried in order. GET accepts JSON or comma-separated names.",
+    example: ["openrouter"],
+  },
   provider_options: {
     type: "object",
     additionalProperties: false,
@@ -143,6 +152,80 @@ const params = {
   },
   format: { type: "string", enum: ["binary", "json"], default: "binary", description: "binary = raw audio file, json = base64 audio" },
 } as const;
+
+const validationResponse = {
+  description: "Validation results per provider (no audio returned).",
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        properties: {
+          checked: { type: "array", items: { type: "string", enum: audioProviders } },
+          working: { type: "array", items: { type: "string", enum: audioProviders } },
+          failed: { type: "array", items: { type: "string", enum: audioProviders } },
+          results: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                provider: { type: "string" }, ok: { type: "boolean" }, response_time_ms: { type: "number" },
+                audio_bytes: { type: "number" }, mime: { type: "string" }, status: { type: "number" }, error: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+      example: { checked: ["google", "gemini"], working: ["google"], failed: ["gemini"], results: [{ provider: "google", ok: true, response_time_ms: 420, audio_bytes: 5120, mime: "audio/mpeg" }, { provider: "gemini", ok: false, response_time_ms: 90, status: 400, error: "No Gemini key configured" }] },
+    },
+  },
+} as const;
+
+function providerListPaths(kind: "validate" | "auto") {
+  const isAuto = kind === "auto";
+  const desc = isAuto
+    ? "Same as /api/public/tts with provider=auto, restricted by `providers` (whitelist, ordered fallback) and/or `exclude` (blacklist). With debug=true it only validates the resulting list and returns the /validate result instead of audio. Typical flow: call /validate, then pass its `working` array as `providers` here."
+    : "Checks every provider (or the `providers` whitelist minus `exclude`) in parallel with a real short synthesis using your account/configured keys. text defaults to \"Test\" and lang to \"en\". Pass the `working` array to /api/public/auto as `providers`.";
+  const responses = {
+    "200": isAuto ? audioSuccessResponse : validationResponse,
+    "400": { description: "Invalid input, or exclude removed every provider" },
+    "401": { description: "Invalid personal API token" },
+    ...(isAuto ? { "502": { description: "Every allowed provider failed" } } : {}),
+  };
+  const props = Object.fromEntries(Object.entries(params).filter(([n]) => n !== "provider" && n !== "api_key" && (isAuto || n !== "format")));
+  return {
+    get: {
+      operationId: isAuto ? "autoSpeechFromQuery" : "validateProvidersFromQuery",
+      summary: isAuto ? "Auto speech with provider whitelist/blacklist (query)" : "Validate providers (query)",
+      description: desc,
+      security: [{ personalApiTokenAuth: [] }, {}],
+      parameters: Object.entries(props).map(([name, schema]) => ({
+        name,
+        in: "query",
+        required: isAuto && (name === "text" || name === "lang"),
+        schema: ["options", "voices", "provider_options", "providers", "exclude"].includes(name)
+          ? { type: "string", maxLength: 2000, description: name === "providers" || name === "exclude" ? "JSON array or comma-separated names, e.g. google,gemini" : `URL-encoded JSON object (${name}).` }
+          : schema,
+      })),
+      responses,
+    },
+    post: {
+      operationId: isAuto ? "autoSpeech" : "validateProviders",
+      summary: isAuto ? "Auto speech with provider whitelist/blacklist (JSON body)" : "Validate providers (JSON body)",
+      description: desc,
+      security: [{ personalApiTokenAuth: [] }, {}],
+      requestBody: {
+        required: isAuto,
+        content: {
+          "application/json": {
+            schema: { type: "object", ...(isAuto ? { required: ["text", "lang"] } : {}), properties: props },
+            example: isAuto ? { text: "Hello", lang: "en", providers: ["gemini", "google"], exclude: ["openrouter"], debug: false } : { providers: ["google", "gemini", "openai"] },
+          },
+        },
+      },
+      responses,
+    },
+  };
+}
 
 const audioSuccessResponse = {
   description: "Encoded audio, or JSON when format=json or debug is enabled. Auto selects a keyed provider; an explicit providers list tries only its ordered choices, including anonymous Google when specified.",
@@ -251,11 +334,11 @@ export const openApiSpec = {
             in: "query",
             required: name === "text" || name === "lang",
             schema:
-              name === "options" || name === "voices" || name === "provider_options" || name === "providers"
+              name === "options" || name === "voices" || name === "provider_options" || name === "providers" || name === "exclude"
                 ? {
                     type: "string",
                     maxLength: 2000,
-                    description: name === "providers" ? "Ordered provider list as JSON or comma-separated names." : `URL-encoded JSON object (${name}).`,
+                    description: name === "providers" || name === "exclude" ? "Provider list as JSON or comma-separated names." : `URL-encoded JSON object (${name}).`,
                   }
                 : schema,
           })),
@@ -313,6 +396,8 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/public/validate": providerListPaths("validate"),
+    "/api/public/auto": providerListPaths("auto"),
     "/api/public/openapi.json": {
       get: {
         operationId: "getOpenApiDocument",
