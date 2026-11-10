@@ -9,6 +9,7 @@ import { detectLanguageCode } from "@/lib/language-detection";
 import { saveAudioHistory } from "@/lib/audio-history";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { ProviderCompare } from "@/components/provider-compare";
 import { geminiAudioBlob } from "@/lib/gemini-audio";
 import { isRequestObject } from "@/lib/request-safety";
 
@@ -663,6 +664,8 @@ function Index() {
         {audio && <audio className="w-full" controls src={audio} />}
         {logs.length > 0 && <RequestLog logs={logs} />}
       </section>
+
+      <ProviderCompare />
 
       <details className="mt-8 rounded-xl border border-border px-4 py-3">
         <summary className="cursor-pointer text-sm font-semibold">API quick reference</summary>
