@@ -80,11 +80,13 @@ describe("public OpenAPI specification", () => {
   it("documents every API route, including the canonical document endpoint", () => {
     expect(Object.keys(openApiSpec.paths).sort()).toEqual([
       "/api/public/access-token",
+      "/api/public/auto",
       "/api/public/info",
       "/api/public/openapi.json",
       "/api/public/openrouter-keys",
       "/api/public/tts",
       "/api/public/usage",
+      "/api/public/validate",
       "/api/report/usage",
       "/api/user/provider-keys",
       "/api/user/token",
