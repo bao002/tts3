@@ -18,6 +18,8 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as OpenrouterRouteImport } from './routes/openrouter'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as TokensRouteImport } from './routes/tokens'
+import { Route as ApiAutoRouteImport } from './routes/api/auto'
+import { Route as ApiValidateRouteImport } from './routes/api/validate'
 import { Route as ApiPublicAccessTokenRouteImport } from './routes/api/public/access-token'
 import { Route as ApiPublicAutoRouteImport } from './routes/api/public/auto'
 import { Route as ApiPublicInfoRouteImport } from './routes/api/public/info'
@@ -73,6 +75,16 @@ const ReportsRoute = ReportsRouteImport.update({
 const TokensRoute = TokensRouteImport.update({
   id: '/tokens',
   path: '/tokens',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAutoRoute = ApiAutoRouteImport.update({
+  id: '/api/auto',
+  path: '/api/auto',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiValidateRoute = ApiValidateRouteImport.update({
+  id: '/api/validate',
+  path: '/api/validate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicAccessTokenRoute = ApiPublicAccessTokenRouteImport.update({
@@ -141,6 +153,8 @@ export interface FileRoutesByFullPath {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
   '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
@@ -163,6 +177,8 @@ export interface FileRoutesByTo {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
   '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
@@ -186,6 +202,8 @@ export interface FileRoutesById {
   '/openrouter': typeof OpenrouterRoute
   '/reports': typeof ReportsRoute
   '/tokens': typeof TokensRoute
+  '/api/auto': typeof ApiAutoRoute
+  '/api/validate': typeof ApiValidateRoute
   '/api/public/access-token': typeof ApiPublicAccessTokenRoute
   '/api/public/auto': typeof ApiPublicAutoRoute
   '/api/public/info': typeof ApiPublicInfoRoute
@@ -210,6 +228,8 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
     | '/api/public/auto'
     | '/api/public/info'
@@ -232,6 +252,8 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
     | '/api/public/auto'
     | '/api/public/info'
@@ -254,6 +276,8 @@ export interface FileRouteTypes {
     | '/openrouter'
     | '/reports'
     | '/tokens'
+    | '/api/auto'
+    | '/api/validate'
     | '/api/public/access-token'
     | '/api/public/auto'
     | '/api/public/info'
@@ -277,6 +301,8 @@ export interface RootRouteChildren {
   OpenrouterRoute: typeof OpenrouterRoute
   ReportsRoute: typeof ReportsRoute
   TokensRoute: typeof TokensRoute
+  ApiAutoRoute: typeof ApiAutoRoute
+  ApiValidateRoute: typeof ApiValidateRoute
   ApiPublicAccessTokenRoute: typeof ApiPublicAccessTokenRoute
   ApiPublicAutoRoute: typeof ApiPublicAutoRoute
   ApiPublicInfoRoute: typeof ApiPublicInfoRoute
@@ -353,6 +379,20 @@ declare module '@tanstack/react-router' {
       path: '/tokens'
       fullPath: '/tokens'
       preLoaderRoute: typeof TokensRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auto': {
+      id: '/api/auto'
+      path: '/api/auto'
+      fullPath: '/api/auto'
+      preLoaderRoute: typeof ApiAutoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/validate': {
+      id: '/api/validate'
+      path: '/api/validate'
+      fullPath: '/api/validate'
+      preLoaderRoute: typeof ApiValidateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/access-token': {
@@ -445,6 +485,8 @@ const rootRouteChildren: RootRouteChildren = {
   OpenrouterRoute: OpenrouterRoute,
   ReportsRoute: ReportsRoute,
   TokensRoute: TokensRoute,
+  ApiAutoRoute: ApiAutoRoute,
+  ApiValidateRoute: ApiValidateRoute,
   ApiPublicAccessTokenRoute: ApiPublicAccessTokenRoute,
   ApiPublicAutoRoute: ApiPublicAutoRoute,
   ApiPublicInfoRoute: ApiPublicInfoRoute,
