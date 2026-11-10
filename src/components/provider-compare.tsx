@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { speechLanguages } from "@/lib/fish-audio";
 
 const ALL = ["google", "lovable", "openrouter", "gemini", "openai", "elevenlabs", "deepgram"] as const;
-type Result = { provider: string; ok: boolean; url?: string; text?: string; ms: number; error?: string };
+type Result = { provider: string; ok: boolean; url?: string; text?: string | undefined; ms: number; error?: string };
 const field =
   "w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
