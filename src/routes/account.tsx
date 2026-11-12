@@ -265,6 +265,40 @@ function Account() {
     return body;
   }
 
+  async function exportData() {
+    setError("");
+    try {
+      const body = await accountRequest("/api/user/data");
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `speak-api-account-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  async function importData(file: File) {
+    setError("");
+    setAuthMessage("");
+    try {
+      const parsed = JSON.parse(await file.text());
+      const result = (await accountRequest("/api/user/data", {
+        method: "POST",
+        body: JSON.stringify(parsed),
+      })) as { imported: number; skipped: number; invalid: number };
+      setAuthMessage(
+        `Imported ${result.imported} keys, ${result.skipped} already saved, ${result.invalid} invalid.`,
+      );
+      await loadAccount(session!.access_token);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
   async function testKey(id: string) {
     setError("");
     setKeyTests((current) => ({ ...current, [id]: { status: "testing", message: "Testing…" } }));
@@ -447,10 +481,35 @@ function Account() {
         <>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 text-sm">
             <span>{session.user.email}</span>
-            <Button type="button" variant="outline" onClick={signOut}>
-              Sign out
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => void exportData()}>
+                Export data
+              </Button>
+              <Button type="button" variant="outline" asChild>
+                <label className="cursor-pointer">
+                  Import data
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void importData(file);
+                    }}
+                  />
+                </label>
+              </Button>
+              <Button type="button" variant="outline" onClick={signOut}>
+                Sign out
+              </Button>
+            </div>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Exports include your full provider keys in plain text — store the file safely. Personal
+            API token secrets can't be exported; only their labels are included.
+          </p>
+          {authMessage && <p className="mt-2 text-sm text-foreground">{authMessage}</p>}
           <section className="mt-6">
             <h2 className="text-base font-semibold">Provider keys</h2>
             <form className="mt-3 grid gap-2 sm:grid-cols-[12rem_1fr_auto]" onSubmit={addKey}>

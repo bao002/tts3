@@ -29,6 +29,7 @@ import { Route as ApiPublicTtsRouteImport } from './routes/api/public/tts'
 import { Route as ApiPublicUsageRouteImport } from './routes/api/public/usage'
 import { Route as ApiPublicValidateRouteImport } from './routes/api/public/validate'
 import { Route as ApiReportUsageRouteImport } from './routes/api/report/usage'
+import { Route as ApiUserDataRouteImport } from './routes/api/user/data'
 import { Route as ApiUserProviderKeysRouteImport } from './routes/api/user/provider-keys'
 import { Route as ApiUserTokenRouteImport } from './routes/api/user/token'
 
@@ -132,6 +133,11 @@ const ApiReportUsageRoute = ApiReportUsageRouteImport.update({
   path: '/api/report/usage',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUserDataRoute = ApiUserDataRouteImport.update({
+  id: '/api/user/data',
+  path: '/api/user/data',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiUserProviderKeysRoute = ApiUserProviderKeysRouteImport.update({
   id: '/api/user/provider-keys',
   path: '/api/user/provider-keys',
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/api/public/usage': typeof ApiPublicUsageRoute
   '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
+  '/api/user/data': typeof ApiUserDataRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
 }
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/api/public/usage': typeof ApiPublicUsageRoute
   '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
+  '/api/user/data': typeof ApiUserDataRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
 }
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/api/public/usage': typeof ApiPublicUsageRoute
   '/api/public/validate': typeof ApiPublicValidateRoute
   '/api/report/usage': typeof ApiReportUsageRoute
+  '/api/user/data': typeof ApiUserDataRoute
   '/api/user/provider-keys': typeof ApiUserProviderKeysRoute
   '/api/user/token': typeof ApiUserTokenRoute
 }
@@ -239,6 +248,7 @@ export interface FileRouteTypes {
     | '/api/public/usage'
     | '/api/public/validate'
     | '/api/report/usage'
+    | '/api/user/data'
     | '/api/user/provider-keys'
     | '/api/user/token'
   fileRoutesByTo: FileRoutesByTo
@@ -263,6 +273,7 @@ export interface FileRouteTypes {
     | '/api/public/usage'
     | '/api/public/validate'
     | '/api/report/usage'
+    | '/api/user/data'
     | '/api/user/provider-keys'
     | '/api/user/token'
   id:
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/api/public/usage'
     | '/api/public/validate'
     | '/api/report/usage'
+    | '/api/user/data'
     | '/api/user/provider-keys'
     | '/api/user/token'
   fileRoutesById: FileRoutesById
@@ -312,6 +324,7 @@ export interface RootRouteChildren {
   ApiPublicUsageRoute: typeof ApiPublicUsageRoute
   ApiPublicValidateRoute: typeof ApiPublicValidateRoute
   ApiReportUsageRoute: typeof ApiReportUsageRoute
+  ApiUserDataRoute: typeof ApiUserDataRoute
   ApiUserProviderKeysRoute: typeof ApiUserProviderKeysRoute
   ApiUserTokenRoute: typeof ApiUserTokenRoute
 }
@@ -458,6 +471,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiReportUsageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/user/data': {
+      id: '/api/user/data'
+      path: '/api/user/data'
+      fullPath: '/api/user/data'
+      preLoaderRoute: typeof ApiUserDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/user/provider-keys': {
       id: '/api/user/provider-keys'
       path: '/api/user/provider-keys'
@@ -496,6 +516,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicUsageRoute: ApiPublicUsageRoute,
   ApiPublicValidateRoute: ApiPublicValidateRoute,
   ApiReportUsageRoute: ApiReportUsageRoute,
+  ApiUserDataRoute: ApiUserDataRoute,
   ApiUserProviderKeysRoute: ApiUserProviderKeysRoute,
   ApiUserTokenRoute: ApiUserTokenRoute,
 }
