@@ -48,26 +48,29 @@ async function handle(request: Request) {
     } catch {
       return Response.json({ error: "Invalid JSON body" }, { status: 400, headers: CORS });
     }
-    if (!isRequestObject(raw) || !Array.isArray(raw.provider_keys)) {
+    const list = isRequestObject(raw) ? raw["provider_keys"] : undefined;
+    if (!Array.isArray(list)) {
       return Response.json({ error: "provider_keys array is required" }, { status: 400, headers: CORS });
     }
-    if (raw.provider_keys.length > 200) {
+    if (list.length > 200) {
       return Response.json({ error: "Too many keys (max 200)" }, { status: 400, headers: CORS });
     }
     let imported = 0, skipped = 0, invalid = 0;
-    for (const item of raw.provider_keys as unknown[]) {
+    for (const item of list as unknown[]) {
+      const entry = isRequestObject(item) ? (item as { service?: unknown; key?: unknown }) : null;
+      const service = entry?.service;
+      const key = entry?.key;
       if (
-        !isRequestObject(item) ||
-        typeof item.service !== "string" ||
-        !KEY_SERVICES.includes(item.service as KeyService) ||
-        typeof item.key !== "string" ||
-        !item.key.trim() ||
-        item.key.length > 500
+        typeof service !== "string" ||
+        !KEY_SERVICES.includes(service as KeyService) ||
+        typeof key !== "string" ||
+        !key.trim() ||
+        key.length > 500
       ) {
         invalid++;
         continue;
       }
-      if (await addUserKey(userId, item.service as KeyService, item.key)) imported++;
+      if (await addUserKey(userId, service as KeyService, key)) imported++;
       else skipped++;
     }
     return Response.json({ imported, skipped, invalid }, { headers: NO_STORE });
